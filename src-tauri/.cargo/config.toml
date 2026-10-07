@@ -1,0 +1,4 @@
+# Linux 驗證機：系統 lld 不可用，rust-lld 搵唔到 webkit2gtk 等系統庫，強制用 bfd。
+[target.x86_64-unknown-linux-gnu]
+linker = "cc"
+rustflags = ["-C", "link-arg=-fuse-ld=bfd"]

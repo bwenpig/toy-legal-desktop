@@ -1,0 +1,25 @@
+{
+  "dependencies": {
+    "@tauri-apps/api": "^2.2",
+    "@tauri-apps/plugin-dialog": "^2.2",
+    "@tauri-apps/plugin-fs": "^2.2",
+    "@tauri-apps/plugin-sql": "^2.2",
+    "@tauri-apps/plugin-updater": "^2.2",
+    "jszip": "^3.10.2",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2",
+    "esbuild": "^0.28.2",
+    "typescript": "5.9"
+  },
+  "name": "toys-gallery-accounting",
+  "private": true,
+  "scripts": {
+    "build": "tauri build",
+    "dev": "tauri dev",
+    "tauri": "tauri"
+  },
+  "type": "module",
+  "version": "3.17.1"
+}
