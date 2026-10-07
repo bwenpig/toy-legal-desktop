@@ -765,6 +765,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.20.0', '設置新增「附件管理」（統計／列表／異常檢查／匯出全部／刪除舊備份）同「MCP 服務」（一鍵複製 Codex 接入設定）。'],
   ['3.19.0', '新增 MCP Server（mcp-server/）：Codex 等 AI 可經 MCP 唯讀查詢賬套（voucher／明細賬／附件／SQL）；金額回整數分＋dollars 字串。'],
   ['3.18.0', '附件入 SQLite：附件內容改存數據庫（base64），唔再寫實體檔；單檔備份、唔怕孤兒檔；v2 舊庫自動遷移（先備份 DB，舊附件目錄改名保留）。'],
   ['3.17.2', '修復 JSON 匯入讀檔 bug：真 Tauri 回傳 ArrayBuffer，舊代碼轉換出空字串導致「Unexpected EOF」；讀檔改用官方 plugin-fs 寫法。'],
@@ -838,7 +839,7 @@ function injectSettingsView(){
     '<p><button class="btn" id="tgPickDbFile" type="button">選擇數據庫檔案…</button> ' +
     '<button class="btn" id="tgPickDbDir" type="button">選擇資料夾…</button> ' +
     '<button class="btn" id="tgResetDbPath" type="button">重設為預設位置</button></p>' +
-    '<p class="muted small">附件存放於應用數據目錄，不隨數據庫位置改變。切換前會先將未儲存嘅改動寫入舊庫；目標如已有數據庫會直接載入（舊版自動升級，並先備份）。</p>' +
+    '<p class="muted small">切換前會先將未儲存嘅改動寫入舊庫；目標如已有數據庫會直接載入（舊版自動升級，並先備份）。v3.18 起附件存入 SQLite，會跟數據庫一齊搬。</p>' +
     '<div id="tgDbSwitchConfirm" hidden></div></section>' +
     '<section class="tgset-sec"><h3>數據庫表預覽 <span class="muted small">（只讀）</span></h3>' +
     '<p><button class="btn" id="tgRefreshTables" type="button">重新整理</button></p>' +
@@ -852,6 +853,22 @@ function injectSettingsView(){
     '<button class="btn" id="tgVoucherImport" type="button">匯入 Voucher Excel…</button></p>' +
     '<p class="muted small">範本每行一條分錄行；B 欄 Voucher No. 吉唔填會自動編號（B040124 格式）。匯入前逐行驗證，可揀「只匯入有效行」。金額經整數分入賬。</p>' +
     '<div id="tgVoucherImportBox" hidden></div></section>' +
+    '<section class="tgset-sec"><h3>附件管理 <span class="muted small">（v3.18 起附件存入 SQLite）</span></h3>' +
+    '<p><button class="btn" id="tgAttRefresh" type="button">重新整理</button> ' +
+    '<button class="btn" id="tgAttExport" type="button">匯出全部附件 (zip)…</button> ' +
+    '<button class="btn" id="tgAttCleanBackup" type="button" hidden>刪除舊附件備份</button></p>' +
+    '<p class="muted" id="tgAttStats">（載入中…）</p>' +
+    '<div class="tgset-gridwrap" id="tgAttListWrap" hidden><table class="tgset-grid"><thead><tr>' +
+    '<th>Voucher</th><th>檔名</th><th>類型</th><th>大小</th><th>狀態</th>' +
+    '</tr></thead><tbody id="tgAttList"></tbody></table></div>' +
+    '<p class="muted small">舊版（v2）附件目錄升級時已改名做 <code>attachments.pre-v3-backup</code> 保留，確認入庫無誤後可刪除。</p></section>' +
+    '<section class="tgset-sec"><h3>MCP 服務 <span class="muted small">（俾 Codex 等 AI 唯讀查詢賬套）</span></h3>' +
+    '<p class="muted small">MCP Server 以唯讀方式開啟數據庫，唔會影響正常使用，亦唔會改到數據。' +
+    'Codex 喺 <code>~/.codex/config.toml</code> 加入以下設定即可接入（DB 路徑已自動填好）：</p>' +
+    '<pre id="tgMcpConfig" style="background:#f0ede6;padding:10px 12px;border-radius:6px;font-size:12px;overflow:auto;white-space:pre-wrap;word-break:break-all;">（載入中…）</pre>' +
+    '<p><button class="btn" id="tgMcpCopyCfg" type="button">複製 Codex 設定</button> ' +
+    '<button class="btn" id="tgMcpCopyPath" type="button">複製 DB 路徑</button> ' +
+    '<span class="muted small" id="tgMcpNote"></span></p></section>' +
     '<div class="tgset-status" id="tgSettingsStatus" role="status" aria-live="polite"></div>';
   document.body.appendChild(div);
   document.getElementById('tgSettingsClose').addEventListener('click', closeSettings);
@@ -862,6 +879,11 @@ function injectSettingsView(){
   document.getElementById('tgPickJson').addEventListener('click', onPickImportJson);
   document.getElementById('tgVoucherTpl').addEventListener('click', downloadVoucherTemplate);
   document.getElementById('tgVoucherImport').addEventListener('click', onImportVoucherExcel);
+  document.getElementById('tgAttRefresh').addEventListener('click', refreshAttachmentManager);
+  document.getElementById('tgAttExport').addEventListener('click', exportAllAttachments);
+  document.getElementById('tgAttCleanBackup').addEventListener('click', cleanupPreV3Backup);
+  document.getElementById('tgMcpCopyCfg').addEventListener('click', copyMcpConfig);
+  document.getElementById('tgMcpCopyPath').addEventListener('click', copyMcpDbPath);
   document.addEventListener('keydown', function(e){
     var v = document.getElementById('tgSettingsView');
     if(e.key === 'Escape' && v && !v.hidden) closeSettings();
@@ -892,6 +914,8 @@ async function refreshSettings(){
   await refreshTableList();
   document.getElementById('tgTablePreview').innerHTML =
     '<p class="muted small">撳上面嘅表名預覽數據（頭 100 行，只讀）。</p>';
+  await refreshAttachmentManager();
+  await renderMcpSection();
 }
 async function refreshSettingsDbPath(){
   var el = document.getElementById('tgDbPath');
@@ -1060,10 +1084,132 @@ async function previewTable(t){
   }
 }
 
-/* ---------- 9e. 從 Web JSON 匯入到 SQLite（設置畫面專用流程） ----------
+/* ---------- 9e. 附件管理 ---------- */
+function fmtBytes(n){
+  n = Number(n) || 0;
+  if(n < 1024) return n + ' B';
+  if(n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(2) + ' MB';
+}
+async function copyText(t, okMsg){
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(t);
+    }else{
+      var ta = document.createElement('textarea');
+      ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    setSettingsStatus(okMsg || '已複製');
+  }catch(e){ setSettingsStatus('複製失敗：' + (e.message || e)); }
+}
+async function refreshAttachmentManager(){
+  var statsEl = document.getElementById('tgAttStats'),
+      wrap = document.getElementById('tgAttListWrap'),
+      tbody = document.getElementById('tgAttList');
+  if(!statsEl) return;
+  statsEl.textContent = '（載入中…）';
+  try{
+    var rows = await dbPort.select(
+      'SELECT voucher_no, seq, name, mime, length(data_b64) AS b64len, ' +
+      'CASE WHEN data_b64 IS NULL THEN 0 ELSE 1 END AS has_data ' +
+      'FROM attachments ORDER BY voucher_no, seq');
+    var total = 0, missing = 0, html = '';
+    rows.forEach(function(r){
+      var bytes = r.b64len == null ? 0 : Math.floor(r.b64len * 3 / 4);
+      total += bytes;
+      var ok = r.has_data ? true : false;
+      if(!ok) missing++;
+      html += '<tr><td>' + escHtml(r.voucher_no) + '</td><td>' + escHtml(r.name) + '</td>' +
+        '<td>' + escHtml(r.mime) + '</td><td>' + fmtBytes(bytes) + '</td>' +
+        '<td>' + (ok ? '正常' : '<span class="error">無內容</span>') + '</td></tr>';
+    });
+    statsEl.innerHTML = '共 <b>' + rows.length + '</b> 個附件，' +
+      '合共 <b>' + fmtBytes(total) + '</b>' +
+      (missing ? '，<span class="error">' + missing + ' 個無內容</span>' : '，全部正常');
+    tbody.innerHTML = html;
+    wrap.hidden = !rows.length;
+    // 舊附件備份目錄存在先顯示刪除掣
+    var cleanBtn = document.getElementById('tgAttCleanBackup');
+    if(cleanBtn){
+      var base = await appDataDir(), exists = false;
+      try{ exists = await invoke('plugin:fs|exists', { path: base + '/attachments.pre-v3-backup' }); }
+      catch(e){}
+      cleanBtn.hidden = !exists;
+    }
+  }catch(e){
+    statsEl.innerHTML = '<span class="error">讀取失敗：' + escHtml(e.message || e) + '</span>';
+  }
+}
+async function exportAllAttachments(){
+  try{
+    setSettingsStatus('正在打包附件…');
+    var rows = await dbPort.select(
+      'SELECT voucher_no, seq, name, data_b64 FROM attachments WHERE data_b64 IS NOT NULL ORDER BY voucher_no, seq');
+    if(!rows.length){ setSettingsStatus('無附件可匯出'); return; }
+    var zip = new window.JSZip(), n = 0;
+    rows.forEach(function(r){
+      try{
+        var bin = atob(r.data_b64), bytes = new Uint8Array(bin.length);
+        for(var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        zip.file('attachments/' + sanitizeName(r.voucher_no) + '/' + sanitizeName(r.name), bytes);
+        n++;
+      }catch(e){}
+    });
+    var zipBytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    var savePath = await dlgSave({ title: '匯出全部附件',
+      defaultPath: 'Toys-Gallery-attachments.zip',
+      filters: [{ name: 'ZIP 壓縮檔', extensions: ['zip'] }] });
+    if(!savePath){ setSettingsStatus('已取消匯出'); return; }
+    await fsWriteBytes(savePath, zipBytes);
+    setSettingsStatus('已匯出 ' + n + ' 個附件：' + savePath);
+  }catch(e){ setSettingsStatus('匯出失敗：' + (e.message || e)); }
+}
+async function cleanupPreV3Backup(){
+  var base = await appDataDir(), dir = base + '/attachments.pre-v3-backup';
+  if(!confirm('確定刪除舊附件備份目錄？\n' + dir + '\n（附件已入 SQLite，刪除後唔影響使用）')) return;
+  try{
+    await invoke('plugin:fs|remove', { path: dir, options: { recursive: true } });
+    setSettingsStatus('舊附件備份已刪除');
+    await refreshAttachmentManager();
+  }catch(e){ setSettingsStatus('刪除失敗：' + (e.message || e)); }
+}
+
+/* ---------- 9f. MCP 服務 ---------- */
+async function renderMcpSection(){
+  var cfgEl = document.getElementById('tgMcpConfig'),
+      noteEl = document.getElementById('tgMcpNote');
+  if(!cfgEl) return;
+  try{
+    var dbPath = await currentDbFilePath();
+    // mcp-server 位置：開發版喺 repo 嘅 mcp-server/；打包後跟 app 資源走
+    var mcpJs = 'mcp-server/index.js';
+    var toml =
+      '[mcp_servers.toys-gallery]\n' +
+      'command = "node"\n' +
+      'args = ["' + mcpJs.replace(/\\/g, '\\\\') + '"]\n' +
+      'env = { TG_DB_PATH = "' + String(dbPath || '').replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '" }';
+    cfgEl.textContent = toml;
+    cfgEl.setAttribute('data-toml', toml);
+    cfgEl.setAttribute('data-dbpath', dbPath || '');
+    if(noteEl) noteEl.textContent = 'MCP Server 唯讀查詢，唔會改到數據。詳見 repo 內 mcp-server/README.md。';
+  }catch(e){
+    cfgEl.textContent = '載入失敗：' + (e.message || e);
+  }
+}
+function copyMcpConfig(){
+  var el = document.getElementById('tgMcpConfig');
+  copyText(el.getAttribute('data-toml') || el.textContent, 'Codex 設定已複製，去 ~/.codex/config.toml 貼上');
+}
+function copyMcpDbPath(){
+  var el = document.getElementById('tgMcpConfig');
+  copyText(el.getAttribute('data-dbpath') || '', 'DB 路徑已複製');
+}
+
+/* ---------- 9g. 從 Web JSON 匯入到 SQLite（設置畫面專用流程） ----------
  * 同 backup-tools 欄嘅「匯入 JSON 備份」唔同：呢度先備份目前 DB，
- * 再經 persistPayload 單一 transaction 寫入關聯表，最後由 DB 重載 app。 */
-var pendingImport = null; // {payload, prepared, legacyConverted, fileName}
+ * 再經 persistPayload 單一 transaction 寫入關聯表，最後由 DB 重載 app。 */var pendingImport = null; // {payload, prepared, legacyConverted, fileName}
 async function onPickImportJson(){
   var p = await dlgOpen({ title: '選擇 Web JSON 備份檔',
     filters: [{ name: 'JSON 備份', extensions: ['json'] }], multiple: false });

@@ -4,7 +4,7 @@
  *
  * headless Chromium 載入實際 src/index.html，mock __TAURI_INTERNALS__.invoke
  * 接真 SQLite 檔（node:sqlite），驗證：
- *  - badge v3.19.0 / __TG__.desktopVersion / __TG_DB__ 存在
+ *  - badge v3.20.0 / __TG__.desktopVersion / __TG_DB__ 存在
  *  - 啟動：全新 DB → 空白賬套
  *  - importExcelData 匯入科目 → UI 入銷貨 voucher
  *  - 關聯表有數（vouchers / voucher_lines，金額係整數分）
@@ -181,10 +181,10 @@ function makeV1Sample(){
   // T1 badge（桌面版＋核心兩個版本；Web 核心版本喺 S2 驗）
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('T1 badge 顯示 v3.19.0＋核心 v3.15.1', badge === 'v3.19.0核心 v3.15.1', String(badge));
+  check('T1 badge 顯示 v3.20.0＋核心 v3.15.1', badge === 'v3.20.0核心 v3.15.1', String(badge));
   // T2 bridge
   const tgVer = await page.evaluate(() => window.__TG__ && window.__TG__.desktopVersion);
-  check('T2 __TG__.desktopVersion = 3.19.0', tgVer === "3.19.0", String(tgVer));
+  check('T2 __TG__.desktopVersion = 3.20.0', tgVer === "3.20.0", String(tgVer));
   const hasDb = await page.evaluate(() => !!window.__TG_DB__);
   check('T3 __TG_DB__ 存在', hasDb);
   // T4 啟動狀態（全新 DB → 空白賬套）
@@ -335,8 +335,8 @@ function makeV1Sample(){
   const appHidden = await page.evaluate(() => document.getElementById('appShell').style.display === 'none');
   check('S1 設置畫面開啟＋隱藏 app', setVisible && appHidden);
   const setVer = await page.evaluate(() => document.querySelector('.tgset-ver').textContent);
-  check('S2 版本：桌面版 3.19.0＋Web核心 v3.15.1',
-    /3\.19\.0/.test(setVer) && /v3\.15\.1/.test(setVer),
+  check('S2 版本：桌面版 3.20.0＋Web核心 v3.15.1',
+    /3\.20\.0/.test(setVer) && /v3\.15\.1/.test(setVer),
     setVer.trim().replace(/\s+/g, ' ').slice(0, 70));
   // S3/S4 表預覽
   await sleep(800);
@@ -598,6 +598,32 @@ function makeV1Sample(){
       migRes.ok === 1 && migRes.fail === 0 && migRow.data_b64 === expMigB64 && verRow.version === 3,
       JSON.stringify(migRes) + ' ver=' + verRow.version);
     curDb().prepare("DELETE FROM vouchers WHERE no='MIGV'").run(); // 清理（CASCADE 刪附件）
+  }
+
+  // ---- C. 設置：附件管理＋MCP（X3 已匯入一張帶附件嘅 voucher） ----
+  {
+    // C1 附件管理顯示
+    await page.evaluate(() => { document.getElementById('tgSettingsNav').click(); });
+    await sleep(800);
+    await page.evaluate(() => document.getElementById('tgAttRefresh').click());
+    await sleep(800);
+    const attStats = await page.evaluate(() => document.getElementById('tgAttStats').innerText);
+    check('C1 附件管理統計', /共 [1-9].* 個附件/.test(attStats) && /全部正常|無內容/.test(attStats), attStats.slice(0, 80));
+    // C2 MCP 設定顯示（含 DB 路徑）
+    const mcpCfg = await page.evaluate(() => document.getElementById('tgMcpConfig').textContent);
+    check('C2 MCP 設定含 DB 路徑', /mcp_servers\.toys-gallery/.test(mcpCfg) && /TG_DB_PATH/.test(mcpCfg), mcpCfg.slice(0, 80));
+    // C3 匯出全部附件 zip
+    savedDialogPath = null;
+    await page.evaluate(() => document.getElementById('tgAttExport').click());
+    await sleep(2500);
+    let attZipOk = false, attZipN = 0;
+    if (savedDialogPath && fs.existsSync(savedDialogPath)) {
+      const az = await JSZip.loadAsync(fs.readFileSync(savedDialogPath));
+      const azFiles = Object.keys(az.files).filter((f) => !az.files[f].dir);
+      attZipN = azFiles.filter((f) => f.startsWith('attachments/')).length;
+      attZipOk = attZipN >= 1;
+    }
+    check('C3 匯出全部附件 zip', attZipOk, attZipN + ' files');
   }
 
   // X4 報表 xlsx 執靚
