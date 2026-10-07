@@ -7,7 +7,7 @@
 - 香港 **Toys Gallery International Limited** 會計系統嘅桌面版。
 - **Tauri 2 + SQLite**（`@tauri-apps/plugin-sql`），本地單機運行，無後端 server。
 - 功能同 web 版完全一樣：Voucher 入賬（借貸自動平衡＋製表／覆核／批核三簽名）、即時過賬、General Ledger、9 份自動報表（Trial Balance、P&L、Balance Sheet、AR/AP Aging、Purchase／Sales Report、Journal、Voucher Register）、CSV／Excel 匯出。
-- 當前版本：**桌面版 v3.17.2／Web 核心 v3.15.1**（badge 同時顯示兩個版本）。
+- 當前版本：**桌面版 v3.19.0／Web 核心 v3.15.1**（badge 同時顯示兩個版本）。
 - Repo：https://github.com/bwenpig/toy-legal-desktop（分支 `main`）
 - Web 版 repo（邏輯來源）：https://github.com/bwenpig/hk-legal-dora
 
@@ -26,6 +26,7 @@
 ## 目錄結構
 
 ```
+mcp-server/           MCP Server（Node.js）：Codex 經 MCP 唯讀查賬套；見 mcp-server/README.md
 src-tauri/            Tauri 配置：tauri.conf.json、capabilities/default.json、Cargo.toml
 web-src/              web 版 TS 源碼（由 hk-legal-dora/src 複製；唯讀，唔好改）
 desktop/              桌面獨有 TS 源碼
@@ -101,3 +102,5 @@ node scripts/smoke-desktop.cjs
   Voucher 批量匯出（總表＋明細＋附件 zip＋hyperlink）、報表 xlsx 美化（篩選／凍結窗格／列印標題）。
 - v3.17.1：badge 雙版本顯示、簽名列自適應換行、工具條可收起（預設收起）。
 - v3.17.2：修復 JSON 匯入讀檔 bug（ArrayBuffer 轉換）。
+- v3.18.0：附件入 SQLite（data_b64），唔再寫實體檔；v2→v3 自動遷移。
+- v3.19.0：MCP Server（Codex 唯讀接入：status／query／list_vouchers／get_voucher／get_attachment／account_ledger）。
