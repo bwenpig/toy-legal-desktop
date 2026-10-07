@@ -184,4 +184,17 @@ CREATE TABLE IF NOT EXISTS app_state (
   -- keys: selected_fiscal_key / last_voucher_dates / report_state / report /
   --       current_route / editing_index / working_voucher
 );
+
+-- v4: MCP／Codex 待匯入 voucher（手寫單相片識別後經 create_voucher 入）。
+-- 唔直接寫 vouchers 表：app 嘅 persist 係全表重寫，直接寫會被覆蓋；
+-- 經呢個 inbox，由用戶喺桌面版一鍵匯入（行正常驗證＋過賬）。
+CREATE TABLE IF NOT EXISTS pending_vouchers (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  source       TEXT NOT NULL DEFAULT 'mcp', -- 來源：mcp/codex
+  status       TEXT NOT NULL DEFAULT 'pending', -- pending/imported/rejected
+  voucher_no   TEXT, -- 建議編號（可空；匯入時自動編）
+  payload_json TEXT NOT NULL, -- {date,type,desc,madeBy,checkedBy,approvedBy,lines:[{account,debit_cents,credit_cents,detail}],attachments:[{name,mime,dataB64}]}
+  note         TEXT -- 識別備註／確認記錄
+);
 `;

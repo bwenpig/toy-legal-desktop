@@ -195,6 +195,19 @@ CREATE TABLE IF NOT EXISTS app_state (
   -- keys: selected_fiscal_key / last_voucher_dates / report_state / report /
   --       current_route / editing_index / working_voucher
 );
+
+-- v4: MCP\uFF0FCodex \u5F85\u532F\u5165 voucher\uFF08\u624B\u5BEB\u55AE\u76F8\u7247\u8B58\u5225\u5F8C\u7D93 create_voucher \u5165\uFF09\u3002
+-- \u5514\u76F4\u63A5\u5BEB vouchers \u8868\uFF1Aapp \u5605 persist \u4FC2\u5168\u8868\u91CD\u5BEB\uFF0C\u76F4\u63A5\u5BEB\u6703\u88AB\u8986\u84CB\uFF1B
+-- \u7D93\u5462\u500B inbox\uFF0C\u7531\u7528\u6236\u55BA\u684C\u9762\u7248\u4E00\u9375\u532F\u5165\uFF08\u884C\u6B63\u5E38\u9A57\u8B49\uFF0B\u904E\u8CEC\uFF09\u3002
+CREATE TABLE IF NOT EXISTS pending_vouchers (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  source       TEXT NOT NULL DEFAULT 'mcp', -- \u4F86\u6E90\uFF1Amcp/codex
+  status       TEXT NOT NULL DEFAULT 'pending', -- pending/imported/rejected
+  voucher_no   TEXT, -- \u5EFA\u8B70\u7DE8\u865F\uFF08\u53EF\u7A7A\uFF1B\u532F\u5165\u6642\u81EA\u52D5\u7DE8\uFF09
+  payload_json TEXT NOT NULL, -- {date,type,desc,madeBy,checkedBy,approvedBy,lines:[{account,debit_cents,credit_cents,detail}],attachments:[{name,mime,dataB64}]}
+  note         TEXT -- \u8B58\u5225\u5099\u8A3B\uFF0F\u78BA\u8A8D\u8A18\u9304
+);
 `;
 
   // web-src/version.ts
@@ -277,7 +290,8 @@ CREATE TABLE IF NOT EXISTS app_state (
       "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
     );
     const version = verRows.length ? num(verRows[0], "version") : 0;
-    if (version >= 3) return { version, needsMigration: false, needsBlobMigration: false, isFresh: false };
+    if (version >= 4) return { version, needsMigration: false, needsBlobMigration: false, isFresh: false };
+    if (version === 3) return { version, needsMigration: false, needsBlobMigration: false, isFresh: false };
     if (version === 2) return { version, needsMigration: false, needsBlobMigration: true, isFresh: false };
     if (version >= 1) return { version, needsMigration: true, needsBlobMigration: false, isFresh: false };
     if (await tableExists(db, "kv_store")) {
@@ -290,7 +304,7 @@ CREATE TABLE IF NOT EXISTS app_state (
     return { version: 0, needsMigration: false, needsBlobMigration: false, isFresh: true };
   }
   async function seedFresh(db) {
-    await db.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (3)");
+    await db.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (4)");
   }
   async function writeAllTables(db, data) {
     const counts = {};
@@ -539,7 +553,7 @@ CREATE TABLE IF NOT EXISTS app_state (
     await transaction(db, async () => {
       counts = await writeAllTables(db, payload.data);
       await db.execute("DROP TABLE IF EXISTS kv_store");
-      await db.execute("INSERT INTO schema_version(version) VALUES (3)");
+      await db.execute("INSERT INTO schema_version(version) VALUES (4)");
     });
     return counts;
   }

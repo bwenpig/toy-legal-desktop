@@ -228,6 +228,8 @@ export interface DesktopBridge {
   parseVoucherImport: (rows: (string | number)[][]) => ParsedVoucherImport;
   importVouchers: typeof importVouchers;
   nextVoucherNumberFor: typeof nextVoucherNumberFor;
+  /** 待匯入 voucher（MCP）匯入後補附件 */
+  setVoucherAttachments: (no: string, atts: { name: string; mime: string; dataURL: string }[]) => boolean;
   /** Voucher Excel 匯出（俾會計師） */
   buildVoucherExport: typeof buildVoucherExport;
   /** 財年清單（匯出範圍 dialog 用） */
@@ -239,7 +241,7 @@ export interface DesktopBridge {
 
 /** 桌面版 bridge（tauri-glue.js 經呢度攞 app 功能）。 */
 const bridge: DesktopBridge = {
-  desktopVersion: '3.20.0',
+  desktopVersion: '3.21.0',
   createBackupPayload,
   validateBackup,
   prepareRestore,
@@ -260,6 +262,12 @@ const bridge: DesktopBridge = {
   parseVoucherImport,
   importVouchers,
   nextVoucherNumberFor,
+  setVoucherAttachments: (no, atts) => {
+    const v = store.vouchers.find((x) => x.no === no);
+    if (!v) return false;
+    v.attachments = atts.map((a) => ({ name: a.name, type: a.mime, dataURL: a.dataURL }));
+    return true;
+  },
   buildVoucherExport,
   fiscalYears: () =>
     store.fiscalYears.map((f) => ({ key: f.key, label: f.label, from: f.from, to: f.to })),

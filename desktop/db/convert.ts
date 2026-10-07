@@ -165,7 +165,7 @@ function normalizeAttachment(a: unknown): DbAttachment {
 /**
  * 建表（IF NOT EXISTS）＋ PRAGMAs（foreign_keys=ON、journal_mode=WAL、
  * synchronous=NORMAL），然後判讀庫狀態：
- * - schema_version ≥ 3 → 正常
+ * - schema_version ≥ 4 → 正常
  * - schema_version = 2 → needsBlobMigration（附件檔案轉入 SQLite）
  * - schema_version = 1（或無記錄但 kv_store 有 app_state）→ needsMigration（v1）
  * - 連 kv_store 都無 → isFresh
@@ -181,7 +181,8 @@ export async function initDatabase(db: DbPort): Promise<InitResult> {
     'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1',
   );
   const version = verRows.length ? num(verRows[0], 'version') : 0;
-  if (version >= 3) return { version, needsMigration: false, needsBlobMigration: false, isFresh: false };
+  if (version >= 4) return { version, needsMigration: false, needsBlobMigration: false, isFresh: false };
+  if (version === 3) return { version, needsMigration: false, needsBlobMigration: false, isFresh: false };
   if (version === 2) return { version, needsMigration: false, needsBlobMigration: true, isFresh: false };
   if (version >= 1) return { version, needsMigration: true, needsBlobMigration: false, isFresh: false };
   if (await tableExists(db, 'kv_store')) {
@@ -196,7 +197,7 @@ export async function initDatabase(db: DbPort): Promise<InitResult> {
 
 /** 空庫 seed：INSERT schema_version(3)。 */
 export async function seedFresh(db: DbPort): Promise<void> {
-  await db.execute('INSERT OR IGNORE INTO schema_version(version) VALUES (3)');
+  await db.execute('INSERT OR IGNORE INTO schema_version(version) VALUES (4)');
 }
 
 // ---------------------------------------------------------------------------
@@ -499,7 +500,7 @@ export async function migrateFromPayload(
   await transaction(db, async () => {
     counts = await writeAllTables(db, payload.data);
     await db.execute('DROP TABLE IF EXISTS kv_store');
-    await db.execute('INSERT INTO schema_version(version) VALUES (3)');
+    await db.execute('INSERT INTO schema_version(version) VALUES (4)');
   });
   return counts;
 }

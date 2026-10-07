@@ -269,7 +269,7 @@ async function migrateAttachmentsToDb(){
     await invoke('plugin:fs|rename',
       { oldPath: base + '/attachments', newPath: base + '/attachments.pre-v3-backup' });
   }catch(e){ /* 無目錄／改名失敗都唔阻 migration */ }
-  await dbPort.execute('INSERT OR IGNORE INTO schema_version(version) VALUES (3)');
+  await dbPort.execute('INSERT OR IGNORE INTO schema_version(version) VALUES (4)');
   console.log('[desktop] v2→v3 附件入庫完成：' + ok + ' 成功，' + fail + ' 失敗');
   return { ok: ok, fail: fail };
 }
@@ -765,6 +765,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.21.0', 'MCP 加 voucher 錄入：create_voucher（驗證借貸平衡／科目存在後排入待匯入）＋設置「待匯入 Voucher」一鍵匯入；手寫單相片經 Codex 識別流程見 mcp-server/VOUCHER_ENTRY.md。'],
   ['3.20.0', '設置新增「附件管理」（統計／列表／異常檢查／匯出全部／刪除舊備份）同「MCP 服務」（一鍵複製 Codex 接入設定）。'],
   ['3.19.0', '新增 MCP Server（mcp-server/）：Codex 等 AI 可經 MCP 唯讀查詢賬套（voucher／明細賬／附件／SQL）；金額回整數分＋dollars 字串。'],
   ['3.18.0', '附件入 SQLite：附件內容改存數據庫（base64），唔再寫實體檔；單檔備份、唔怕孤兒檔；v2 舊庫自動遷移（先備份 DB，舊附件目錄改名保留）。'],
@@ -869,6 +870,13 @@ function injectSettingsView(){
     '<p><button class="btn" id="tgMcpCopyCfg" type="button">複製 Codex 設定</button> ' +
     '<button class="btn" id="tgMcpCopyPath" type="button">複製 DB 路徑</button> ' +
     '<span class="muted small" id="tgMcpNote"></span></p></section>' +
+    '<section class="tgset-sec"><h3>待匯入 Voucher <span class="muted small">（MCP／Codex 識別手寫單後入呢度）</span></h3>' +
+    '<p><button class="btn" id="tgPendRefresh" type="button">重新整理</button></p>' +
+    '<p class="muted" id="tgPendStats">（載入中…）</p>' +
+    '<div class="tgset-gridwrap" id="tgPendListWrap" hidden><table class="tgset-grid"><thead><tr>' +
+    '<th>ID</th><th>日期</th><th>摘要</th><th>分錄</th><th>金額</th><th>附件</th><th>操作</th>' +
+    '</tr></thead><tbody id="tgPendList"></tbody></table></div>' +
+    '<p class="muted small">匯入會經正常驗證＋過賬；附件（手寫單相片）會一齊入賬套。</p></section>' +
     '<div class="tgset-status" id="tgSettingsStatus" role="status" aria-live="polite"></div>';
   document.body.appendChild(div);
   document.getElementById('tgSettingsClose').addEventListener('click', closeSettings);
@@ -884,6 +892,7 @@ function injectSettingsView(){
   document.getElementById('tgAttCleanBackup').addEventListener('click', cleanupPreV3Backup);
   document.getElementById('tgMcpCopyCfg').addEventListener('click', copyMcpConfig);
   document.getElementById('tgMcpCopyPath').addEventListener('click', copyMcpDbPath);
+  document.getElementById('tgPendRefresh').addEventListener('click', refreshPendingVouchers);
   document.addEventListener('keydown', function(e){
     var v = document.getElementById('tgSettingsView');
     if(e.key === 'Escape' && v && !v.hidden) closeSettings();
@@ -916,6 +925,7 @@ async function refreshSettings(){
     '<p class="muted small">撳上面嘅表名預覽數據（頭 100 行，只讀）。</p>';
   await refreshAttachmentManager();
   await renderMcpSection();
+  await refreshPendingVouchers();
 }
 async function refreshSettingsDbPath(){
   var el = document.getElementById('tgDbPath');
@@ -1207,7 +1217,85 @@ function copyMcpDbPath(){
   copyText(el.getAttribute('data-dbpath') || '', 'DB 路徑已複製');
 }
 
-/* ---------- 9g. 從 Web JSON 匯入到 SQLite（設置畫面專用流程） ----------
+/* ---------- 9g. 待匯入 Voucher（MCP／Codex 手寫單識別） ---------- */
+function centsToStr(c){
+  var n = Math.round(Number(c) || 0), neg = n < 0, a = Math.abs(n);
+  return (neg ? '-' : '') + Math.floor(a / 100) + '.' + String(a % 100).padStart(2, '0');
+}
+async function refreshPendingVouchers(){
+  var statsEl = document.getElementById('tgPendStats'),
+      wrap = document.getElementById('tgPendListWrap'),
+      tbody = document.getElementById('tgPendList');
+  if(!statsEl) return;
+  statsEl.textContent = '（載入中…）';
+  try{
+    var rows = await dbPort.select(
+      "SELECT id, created_at, voucher_no, payload_json, note FROM pending_vouchers WHERE status='pending' ORDER BY id");
+    var html = '';
+    rows.forEach(function(r){
+      var p = {};
+      try{ p = JSON.parse(r.payload_json); }catch(e){}
+      var total = (p.lines || []).reduce(function(s, l){ return s + (l.debit_cents || 0); }, 0);
+      var attN = (p.attachments || []).length;
+      html += '<tr><td>' + r.id + '</td><td>' + escHtml(p.date || '') + '</td>' +
+        '<td>' + escHtml(p.desc || '') + '</td><td>' + (p.lines || []).length + ' 行</td>' +
+        '<td>$' + centsToStr(total) + '</td><td>' + attN + ' 張</td>' +
+        '<td><button class="btn" data-pend-import="' + r.id + '" type="button">匯入</button> ' +
+        '<button class="btn" data-pend-reject="' + r.id + '" type="button">刪除</button></td></tr>';
+    });
+    statsEl.innerHTML = rows.length ? '共 <b>' + rows.length + '</b> 張待匯入' : '無待匯入 voucher';
+    tbody.innerHTML = html;
+    wrap.hidden = !rows.length;
+    tbody.querySelectorAll('[data-pend-import]').forEach(function(b){
+      b.addEventListener('click', function(){ importPendingVoucher(Number(b.getAttribute('data-pend-import'))); });
+    });
+    tbody.querySelectorAll('[data-pend-reject]').forEach(function(b){
+      b.addEventListener('click', function(){ rejectPendingVoucherUI(Number(b.getAttribute('data-pend-reject'))); });
+    });
+  }catch(e){
+    statsEl.innerHTML = '<span class="error">讀取失敗：' + escHtml(e.message || e) + '</span>';
+  }
+}
+async function importPendingVoucher(id){
+  try{
+    var rows = await dbPort.select("SELECT * FROM pending_vouchers WHERE id=? AND status='pending'", [id]);
+    if(!rows.length){ setSettingsStatus('搵唔到待匯入 #' + id); return; }
+    var r = rows[0], p = JSON.parse(r.payload_json);
+    var draft = {
+      key: 'pending-' + id,
+      voucherNo: r.voucher_no || '',
+      date: p.date, type: p.type, desc: p.desc,
+      madeBy: p.madeBy || '', checkedBy: p.checkedBy || '', approvedBy: p.approvedBy || '',
+      lines: (p.lines || []).map(function(l){
+        return { account: l.account, debit: l.debit_cents || 0, credit: l.credit_cents || 0, detail: l.detail || '' };
+      }),
+      rowNums: [],
+    };
+    var res = TG.importVouchers([draft]);
+    if(!res.imported || !res.voucherNos.length){
+      setSettingsStatus('匯入失敗（驗證唔過）');
+      return;
+    }
+    var no = res.voucherNos[0];
+    if(p.attachments && p.attachments.length){
+      TG.setVoucherAttachments(no, p.attachments.map(function(a){
+        return { name: a.name, mime: a.mime, dataURL: 'data:' + a.mime + ';base64,' + a.dataB64 };
+      }));
+    }
+    await dbPort.execute("UPDATE pending_vouchers SET status='imported' WHERE id=?", [id]);
+    schedulePersist();
+    setSettingsStatus('已匯入：' + no + '（' + res.imported + ' 張）');
+    await refreshPendingVouchers();
+  }catch(e){ setSettingsStatus('匯入失敗：' + (e.message || e)); }
+}
+async function rejectPendingVoucherUI(id){
+  if(!confirm('確定刪除待匯入 #' + id + '？')) return;
+  await dbPort.execute("UPDATE pending_vouchers SET status='rejected' WHERE id=?", [id]);
+  await refreshPendingVouchers();
+  setSettingsStatus('已刪除待匯入 #' + id);
+}
+
+/* ---------- 9h. 從 Web JSON 匯入到 SQLite（設置畫面專用流程） ----------
  * 同 backup-tools 欄嘅「匯入 JSON 備份」唔同：呢度先備份目前 DB，
  * 再經 persistPayload 單一 transaction 寫入關聯表，最後由 DB 重載 app。 */var pendingImport = null; // {payload, prepared, legacyConverted, fileName}
 async function onPickImportJson(){
@@ -1391,7 +1479,7 @@ async function doImportVouchers(){
   }
 }
 
-/* ---------- 9g. Voucher 批量匯出 Excel（俾會計師） ----------
+/* ---------- 9i. Voucher 批量匯出 Excel（俾會計師） ----------
  * 入口：voucher 列表 card-head 注入「匯出 Voucher Excel」掣 → 範圍 dialog
  * （財年＋月份）→ 總表＋明細 xlsx＋附件打包 zip。
  * 附件 hyperlink 指去 zip 入面相對路徑 attachments/<voucherNo>/（解壓後有效）。 */

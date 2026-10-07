@@ -23,6 +23,11 @@ function setupDb() {
       debit_cents INTEGER NOT NULL, credit_cents INTEGER NOT NULL, detail TEXT NOT NULL DEFAULT '');
     CREATE TABLE attachments (id INTEGER PRIMARY KEY AUTOINCREMENT, voucher_no TEXT NOT NULL,
       seq INTEGER NOT NULL DEFAULT 0, name TEXT NOT NULL, mime TEXT NOT NULL, path TEXT, data_b64 TEXT);
+    CREATE TABLE accounts (code TEXT, name TEXT PRIMARY KEY, type TEXT);
+    INSERT INTO accounts VALUES ('1000','Bank Saving Account','資產'),('4000','Sales','收入');
+    CREATE TABLE pending_vouchers (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      source TEXT NOT NULL DEFAULT 'mcp', status TEXT NOT NULL DEFAULT 'pending', voucher_no TEXT,
+      payload_json TEXT NOT NULL, note TEXT);
     INSERT INTO vouchers VALUES ('B091423','B','2023-09-22','MCP 測試單','A','B','C','', '2023');
     INSERT INTO voucher_lines VALUES ('B091423',0,'Bank Saving Account',142800,0,''),
       ('B091423',1,'Sales',0,142800,'');
@@ -74,7 +79,7 @@ function check(name, cond, info) {
   await rpc(proc, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
   const tools = await rpc(proc, 'tools/list', {});
   const names = (tools.result.tools || []).map((t) => t.name);
-  check('M1 tools/list 有 6 個 tools', names.length === 6, names.join(','));
+  check('M1 tools/list 有 10 個 tools', names.length === 10, names.join(','));
 
   const st = await rpc(proc, 'tools/call', { name: 'status', arguments: {} });
   const stData = JSON.parse(st.result.content[0].text);
@@ -104,6 +109,41 @@ function check(name, cond, info) {
 
   const q2 = await rpc(proc, 'tools/call', { name: 'query', arguments: { sql: 'SELECT * FROM vouchers; DROP TABLE vouchers' } });
   check('M9 query 擋多語句寫入', q2.result.isError === true, '');
+
+  // M10-M14 voucher 錄入
+  const goodVoucher = {
+    date: '2026-10-07', type: 'B', desc: 'MCP 入賬測試',
+    made_by: 'T', checked_by: 'T', approved_by: 'T',
+    lines: [
+      { account: 'Bank Saving Account', debit: '1428.00', detail: 'test' },
+      { account: 'Sales', credit_cents: 142800 },
+    ],
+    attachments: [{ name: 'hand.jpg', mime: 'image/jpeg', data_base64: 'aGVsbG8=' }],
+  };
+  const cv = await rpc(proc, 'tools/call', { name: 'create_voucher', arguments: { voucher: goodVoucher, note: 'test' } });
+  const cvData = JSON.parse(cv.result.content[0].text);
+  check('M10 create_voucher 正常', cvData.pending_id === 1 && cvData.total === '1428.00', JSON.stringify(cvData).slice(0, 100));
+
+  const badBal = await rpc(proc, 'tools/call', { name: 'create_voucher', arguments: { voucher: {
+    ...goodVoucher, lines: [{ account: 'Bank Saving Account', debit: '100.00' }, { account: 'Sales', credit: '99.00' }] } } });
+  check('M11 借貸不平被擋', badBal.result.isError === true, '');
+
+  const badAcc = await rpc(proc, 'tools/call', { name: 'create_voucher', arguments: { voucher: {
+    ...goodVoucher, lines: [{ account: '唔存在科目', debit: '100.00' }, { account: 'Sales', credit: '100.00' }] } } });
+  check('M12 唔存在科目被擋', badAcc.result.isError === true, '');
+
+  const lp = await rpc(proc, 'tools/call', { name: 'list_pending_vouchers', arguments: {} });
+  const lpData = JSON.parse(lp.result.content[0].text);
+  check('M13 list_pending', lpData.length === 1 && lpData[0].desc === 'MCP 入賬測試', JSON.stringify(lpData[0]));
+
+  const gp = await rpc(proc, 'tools/call', { name: 'get_pending_voucher', arguments: { id: 1 } });
+  const gpData = JSON.parse(gp.result.content[0].text);
+  check('M14 get_pending 明細', gpData.voucher.lines.length === 2 && gpData.voucher.attachments[0].has_content === true, '');
+
+  const rj = await rpc(proc, 'tools/call', { name: 'reject_pending_voucher', arguments: { id: 1 } });
+  check('M15 reject', JSON.parse(rj.result.content[0].text).status === 'rejected', '');
+  const lp2 = await rpc(proc, 'tools/call', { name: 'list_pending_vouchers', arguments: {} });
+  check('M16 reject 後唔再係 pending', JSON.parse(lp2.result.content[0].text).length === 0, '');
 
   proc.kill();
   console.log(`==== ${pass}/${pass + fail} PASS ====`);

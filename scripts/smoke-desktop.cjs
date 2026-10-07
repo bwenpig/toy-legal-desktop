@@ -4,7 +4,7 @@
  *
  * headless Chromium 載入實際 src/index.html，mock __TAURI_INTERNALS__.invoke
  * 接真 SQLite 檔（node:sqlite），驗證：
- *  - badge v3.20.0 / __TG__.desktopVersion / __TG_DB__ 存在
+ *  - badge v3.21.0 / __TG__.desktopVersion / __TG_DB__ 存在
  *  - 啟動：全新 DB → 空白賬套
  *  - importExcelData 匯入科目 → UI 入銷貨 voucher
  *  - 關聯表有數（vouchers / voucher_lines，金額係整數分）
@@ -181,20 +181,20 @@ function makeV1Sample(){
   // T1 badge（桌面版＋核心兩個版本；Web 核心版本喺 S2 驗）
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('T1 badge 顯示 v3.20.0＋核心 v3.15.1', badge === 'v3.20.0核心 v3.15.1', String(badge));
+  check('T1 badge 顯示 v3.21.0＋核心 v3.15.1', badge === 'v3.21.0核心 v3.15.1', String(badge));
   // T2 bridge
   const tgVer = await page.evaluate(() => window.__TG__ && window.__TG__.desktopVersion);
-  check('T2 __TG__.desktopVersion = 3.20.0', tgVer === "3.20.0", String(tgVer));
+  check('T2 __TG__.desktopVersion = 3.21.0', tgVer === "3.21.0", String(tgVer));
   const hasDb = await page.evaluate(() => !!window.__TG_DB__);
   check('T3 __TG_DB__ 存在', hasDb);
   // T4 啟動狀態（全新 DB → 空白賬套）
   const status = await page.evaluate(() =>
     (document.getElementById('backupStatus') || {}).textContent || '');
   check('T4 啟動狀態', /空白|載入/.test(status), status.slice(0, 40));
-  // T5 schema_version = 3
+  // T5 schema_version = 4
   let ver = null;
   try { ver = mockSelect('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1')[0]; } catch (e) {}
-  check('T5 schema_version = 3', ver && ver.version === 3, JSON.stringify(ver));
+  check('T5 schema_version = 4', ver && ver.version === 4, JSON.stringify(ver));
   // T6 關聯表存在
   const tables = mockSelect("SELECT name FROM sqlite_master WHERE type='table'").map((r) => r.name);
   check('T6 關聯表齊全', ['vouchers', 'voucher_lines', 'accounts', 'fiscal_years', 'attachments'].every((t) => tables.includes(t)),
@@ -335,8 +335,8 @@ function makeV1Sample(){
   const appHidden = await page.evaluate(() => document.getElementById('appShell').style.display === 'none');
   check('S1 設置畫面開啟＋隱藏 app', setVisible && appHidden);
   const setVer = await page.evaluate(() => document.querySelector('.tgset-ver').textContent);
-  check('S2 版本：桌面版 3.20.0＋Web核心 v3.15.1',
-    /3\.20\.0/.test(setVer) && /v3\.15\.1/.test(setVer),
+  check('S2 版本：桌面版 3.21.0＋Web核心 v3.15.1',
+    /3\.21\.0/.test(setVer) && /v3\.15\.1/.test(setVer),
     setVer.trim().replace(/\s+/g, ' ').slice(0, 70));
   // S3/S4 表預覽
   await sleep(800);
@@ -464,7 +464,7 @@ function makeV1Sample(){
   await sleep(3000);
   const migVer = curDb().prepare('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1').get();
   const migV = curDb().prepare('SELECT COUNT(*) AS c FROM vouchers').get().c;
-  check('S11 v1 切換自動 migration', migVer && migVer.version === 3 && migV >= 1,
+  check('S11 v1 切換自動 migration', migVer && migVer.version === 4 && migV >= 1,
     'schema=' + (migVer && migVer.version) + ', vouchers=' + migV);
   // ---- X. Excel 完整支援 ----
   const XLSX = require('xlsx');
@@ -594,8 +594,8 @@ function makeV1Sample(){
     const migRow = curDb().prepare("SELECT data_b64 FROM attachments WHERE voucher_no='MIGV'").get();
     const verRow = curDb().prepare('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1').get();
     const expMigB64 = Buffer.from('migrated-content').toString('base64');
-    check('B3 v2→v3 附件入庫＋版本升3',
-      migRes.ok === 1 && migRes.fail === 0 && migRow.data_b64 === expMigB64 && verRow.version === 3,
+    check('B3 v2→v3 附件入庫＋版本升4',
+      migRes.ok === 1 && migRes.fail === 0 && migRow.data_b64 === expMigB64 && verRow.version === 4,
       JSON.stringify(migRes) + ' ver=' + verRow.version);
     curDb().prepare("DELETE FROM vouchers WHERE no='MIGV'").run(); // 清理（CASCADE 刪附件）
   }
@@ -624,6 +624,50 @@ function makeV1Sample(){
       attZipOk = attZipN >= 1;
     }
     check('C3 匯出全部附件 zip', attZipOk, attZipN + ' files');
+  }
+
+  // ---- D. 待匯入 Voucher（MCP 手寫單） ----
+  {
+    // D1：插入一張 pending，列表顯示
+    const pendPayload = JSON.stringify({
+      date: '2026-10-07', type: 'B', desc: '手寫單測試',
+      madeBy: 'T', checkedBy: 'T', approvedBy: 'T',
+      lines: [
+        { account: 'Bank Saving Account', debit_cents: 50000, credit_cents: 0, detail: '' },
+        { account: 'Sales', debit_cents: 0, credit_cents: 50000, detail: '' },
+      ],
+      attachments: [{ name: 'hand.jpg', mime: 'image/jpeg', dataB64: Buffer.from('fakeimg').toString('base64') }],
+    });
+    curDb().prepare("INSERT INTO pending_vouchers(status, payload_json, note) VALUES ('pending',?,?)").run(pendPayload, 'smoke');
+    const pendId = curDb().prepare('SELECT last_insert_rowid() AS id').get().id;
+    await page.evaluate(() => document.getElementById('tgPendRefresh').click());
+    await sleep(800);
+    const pendStats = await page.evaluate(() => document.getElementById('tgPendStats').innerText);
+    check('D1 待匯入列表顯示', /共 1 張待匯入/.test(pendStats), pendStats.slice(0, 40));
+    // D2：一鍵匯入
+    await page.evaluate((id) => {
+      document.querySelector('[data-pend-import="' + id + '"]').click();
+    }, pendId);
+    await sleep(2500);
+    const impSt = await page.evaluate(() => document.getElementById('tgSettingsStatus').textContent);
+    const vRow = curDb().prepare("SELECT no FROM vouchers WHERE description='手寫單測試'").get();
+    const attRow2 = vRow && curDb().prepare('SELECT data_b64 FROM attachments WHERE voucher_no=?').get(vRow.no);
+    const pendSt = curDb().prepare('SELECT status FROM pending_vouchers WHERE id=?').get(pendId).status;
+    check('D2 一鍵匯入成功（入賬＋附件＋狀態）',
+      /已匯入/.test(impSt) && !!vRow && !!attRow2 && attRow2.data_b64 === Buffer.from('fakeimg').toString('base64') && pendSt === 'imported',
+      impSt.slice(0, 40) + ' voucher=' + (vRow && vRow.no));
+    // D3：刪除待匯入（headless 預設 confirm→dismiss，先 override 做自動確認）
+    curDb().prepare("INSERT INTO pending_vouchers(status, payload_json) VALUES ('pending',?)").run('{}');
+    const delId = curDb().prepare('SELECT last_insert_rowid() AS id').get().id;
+    await page.evaluate(() => document.getElementById('tgPendRefresh').click());
+    await sleep(800);
+    await page.evaluate((id) => {
+      window.confirm = () => true;
+      document.querySelector('[data-pend-reject="' + id + '"]').click();
+    }, delId);
+    await sleep(800);
+    const delSt = curDb().prepare('SELECT status FROM pending_vouchers WHERE id=?').get(delId).status;
+    check('D3 刪除待匯入', delSt === 'rejected', 'status=' + delSt);
   }
 
   // X4 報表 xlsx 執靚

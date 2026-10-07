@@ -3156,7 +3156,7 @@
     return { addedAccounts, skippedAccounts, setOpening, openingErrors };
   }
   var bridge = {
-    desktopVersion: "3.20.0",
+    desktopVersion: "3.21.0",
     createBackupPayload,
     validateBackup,
     prepareRestore,
@@ -3177,6 +3177,12 @@
     parseVoucherImport,
     importVouchers,
     nextVoucherNumberFor,
+    setVoucherAttachments: (no, atts) => {
+      const v = store.vouchers.find((x) => x.no === no);
+      if (!v) return false;
+      v.attachments = atts.map((a) => ({ name: a.name, type: a.mime, dataURL: a.dataURL }));
+      return true;
+    },
     buildVoucherExport,
     fiscalYears: () => store.fiscalYears.map((f) => ({ key: f.key, label: f.label, from: f.from, to: f.to })),
     selectedFiscalKey: () => store.selectedFiscalKey,

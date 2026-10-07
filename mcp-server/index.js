@@ -3,9 +3,10 @@
  * Toys Gallery 會計系統 — MCP Server（v3.19.0）
  *
  * 俾 Codex / Claude 等 AI agent 經 MCP 讀取桌面版 SQLite 賬套。
- * - 唯讀：DB 以 read-only 開，唔會 lock 住 desktop app（WAL 模式可並行讀）。
- * - 金額一律回傳 cents（整數）＋ dollars（字串，兩位小數），唔用浮點。
- * - 附件內容經 get_attachment 攞（base64），list/get 淨係回 metadata。
+ * - 讀：DB 以 WAL 模式開，可同 desktop app 並行（SQLite lock 排隊寫入）。
+ * - 寫：只限 pending_vouchers（待匯入）；唔掂核心賬表，唔怕同 app 衝突。
+ *   app 嘅 persist 係全表重寫，直接寫 vouchers 會被覆蓋，所以 voucher 經 inbox 由用戶一鍵匯入。
+ * - query tool 只接受唯讀 SQL。
  *
  * DB 路徑解析順序：
  *   1. 環境變量 TG_DB_PATH
@@ -56,7 +57,8 @@ if (!fs.existsSync(DB_PATH)) {
   console.error(`[mcp] 找不到數據庫：${DB_PATH}（可用 TG_DB_PATH 指定）`);
   process.exit(1);
 }
-const db = new DatabaseSync(DB_PATH, { readOnly: true });
+const db = new DatabaseSync(DB_PATH);
+db.exec('PRAGMA journal_mode = WAL');
 
 /** 分 → "1234.56" 字串（唔用浮點） */
 function centsStr(c) {
@@ -78,7 +80,7 @@ function tableCounts() {
 }
 
 const server = new Server(
-  { name: 'toys-gallery-accounting', version: '3.19.0' },
+  { name: 'toys-gallery-accounting', version: '3.21.0' },
   { capabilities: { tools: {} } }
 );
 
@@ -148,6 +150,87 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         required: ['account'],
       },
     },
+    {
+      name: 'create_voucher',
+      description: '新增 voucher（手寫單相片經 AI 識別後用呢個入賬）。先驗證（借貸平衡、科目存在、日期有效），通過後放入 pending_vouchers 待用戶喺桌面版一鍵匯入。唔會直接寫賬套，唔怕同桌面版衝突。',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          voucher: {
+            type: 'object',
+            description: 'voucher 資料',
+            properties: {
+              date: { type: 'string', description: '日期 YYYY-MM-DD' },
+              type: { type: 'string', description: 'B=銀行 / T=轉賬', enum: ['B', 'T'] },
+              desc: { type: 'string', description: '摘要' },
+              voucher_no: { type: 'string', description: '自選編號（唔填匯入時自動編 B040124 格式）' },
+              made_by: { type: 'string' },
+              checked_by: { type: 'string' },
+              approved_by: { type: 'string' },
+              lines: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    account: { type: 'string' },
+                    debit_cents: { type: 'integer', description: '借方金額（分，整數）' },
+                    credit_cents: { type: 'integer', description: '貸方金額（分，整數）' },
+                    debit: { type: 'string', description: '借方金額（美元字串，如 "1234.56"；同 debit_cents 二揀一）' },
+                    credit: { type: 'string', description: '貸方金額（美元字串）' },
+                    detail: { type: 'string', description: '明細' },
+                  },
+                  required: ['account'],
+                },
+              },
+              attachments: {
+                type: 'array',
+                description: '附件（通常係手寫單相片）',
+                items: {
+                  type: 'object',
+                  properties: {
+                    name: { type: 'string' },
+                    mime: { type: 'string' },
+                    data_base64: { type: 'string' },
+                  },
+                  required: ['name', 'data_base64'],
+                },
+              },
+            },
+            required: ['date', 'type', 'desc', 'lines'],
+          },
+          note: { type: 'string', description: '備註（如識別信心、用戶確認記錄）' },
+        },
+        required: ['voucher'],
+      },
+    },
+    {
+      name: 'list_pending_vouchers',
+      description: '列出待匯入 voucher（status=pending／全部）',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          status: { type: 'string', enum: ['pending', 'imported', 'rejected'], description: '唔填=pending' },
+        },
+      },
+    },
+    {
+      name: 'get_pending_voucher',
+      description: '取一張待匯入 voucher 明細',
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'number' } },
+        required: ['id'],
+      },
+    },
+    {
+      name: 'reject_pending_voucher',
+      description: '駁回一張待匯入 voucher（用戶唔要）',
+      inputSchema: {
+        type: 'object',
+        properties: { id: { type: 'number' } },
+        required: ['id'],
+      },
+    },
   ],
 }));
 
@@ -156,6 +239,73 @@ function err(msg) {
 }
 function ok(data) {
   return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+}
+
+/** "1234.56" → 125434 分（half-up；唔用浮點） */
+function dollarsToCents(s) {
+  const m = String(s).trim().match(/^(\d+)(?:\.(\d{1,3}))?$/);
+  if (!m) throw new Error('金額格式唔啱：' + s);
+  let cents = parseInt(m[1], 10) * 100;
+  const dec = (m[2] || '').padEnd(3, '0');
+  cents += Math.floor(parseInt(dec, 10) / 10) + (parseInt(dec, 10) % 10 >= 5 ? 1 : 0);
+  return cents;
+}
+function parseLineAmount(line, side) {
+  const cKey = side + '_cents', dKey = side;
+  if (line[cKey] != null && line[cKey] !== '') {
+    const n = Number(line[cKey]);
+    if (!Number.isInteger(n) || n < 0) throw new Error('金額分必須係非負整數：' + line[cKey]);
+    return n;
+  }
+  if (line[dKey] != null && line[dKey] !== '') return dollarsToCents(line[dKey]);
+  return 0;
+}
+/** 驗證 voucher，ok 回正規化 payload，唔 ok throw */
+function validateVoucherInput(v) {
+  if (!v || typeof v !== 'object') throw new Error('voucher 唔係物件');
+  const date = String(v.date || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || isNaN(new Date(date + 'T00:00:00Z').getTime()))
+    throw new Error('日期唔啱（要 YYYY-MM-DD）：' + v.date);
+  const type = String(v.type || '').toUpperCase();
+  if (type !== 'B' && type !== 'T') throw new Error('類型要 B 或 T：' + v.type);
+  const desc = String(v.desc || '').trim();
+  if (!desc) throw new Error('摘要唔可以空');
+  const lines = v.lines;
+  if (!Array.isArray(lines) || !lines.length) throw new Error('至少要一行分錄');
+  let dr = 0, cr = 0;
+  const normLines = lines.map((l, i) => {
+    const account = String(l.account || '').trim();
+    if (!account) throw new Error(`第 ${i + 1} 行：科目唔可以空`);
+    const exists = one('SELECT 1 FROM accounts WHERE name = ? LIMIT 1', [account]);
+    if (!exists) throw new Error(`第 ${i + 1} 行：科目唔存在「${account}」`);
+    const debit_cents = parseLineAmount(l, 'debit');
+    const credit_cents = parseLineAmount(l, 'credit');
+    if (debit_cents > 0 && credit_cents > 0)
+      throw new Error(`第 ${i + 1} 行：借貸唔可以同時有數`);
+    dr += debit_cents; cr += credit_cents;
+    return { account, debit_cents, credit_cents, detail: String(l.detail || '') };
+  });
+  if (dr !== cr) throw new Error(`借貸不平：借 ${centsStr(dr)} vs 貸 ${centsStr(cr)}`);
+  if (dr <= 0) throw new Error('金額要大過 0');
+  let voucher_no = null;
+  if (v.voucher_no != null && String(v.voucher_no).trim() !== '') {
+    voucher_no = String(v.voucher_no).trim();
+    const dup = one('SELECT 1 FROM vouchers WHERE no = ? LIMIT 1', [voucher_no]) ||
+      one("SELECT 1 FROM pending_vouchers WHERE voucher_no = ? AND status='pending' LIMIT 1", [voucher_no]);
+    if (dup) throw new Error('Voucher No. 已存在：' + voucher_no);
+  }
+  const atts = [];
+  for (const a of v.attachments || []) {
+    const b64 = String(a.data_base64 || '').replace(/\s+/g, '');
+    if (!b64) throw new Error('附件 ' + a.name + ' 無內容');
+    if (!/^[A-Za-z0-9+/=]+$/.test(b64)) throw new Error('附件 ' + a.name + ' 唔係有效 base64');
+    atts.push({ name: String(a.name || 'attachment'), mime: String(a.mime || 'application/octet-stream'), dataB64: b64 });
+  }
+  return {
+    date, type, desc, voucher_no,
+    madeBy: String(v.made_by || ''), checkedBy: String(v.checked_by || ''), approvedBy: String(v.approved_by || ''),
+    lines: normLines, attachments: atts,
+  };
 }
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -261,6 +411,52 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
           total_debit_cents: dr, total_debit: centsStr(dr),
           total_credit_cents: cr, total_credit: centsStr(cr),
         });
+      }
+      case 'create_voucher': {
+        const norm = validateVoucherInput(a.voucher);
+        const payload = {
+          date: norm.date, type: norm.type, desc: norm.desc,
+          madeBy: norm.madeBy, checkedBy: norm.checkedBy, approvedBy: norm.approvedBy,
+          lines: norm.lines, attachments: norm.attachments,
+        };
+        const r = db.prepare(
+          "INSERT INTO pending_vouchers(source, status, voucher_no, payload_json, note) VALUES ('mcp','pending',?,?,?)"
+        ).run(norm.voucher_no, JSON.stringify(payload), a.note != null ? String(a.note) : null);
+        return ok({
+          pending_id: Number(r.lastInsertRowid),
+          voucher_no: norm.voucher_no || '(匯入時自動編號)',
+          status: 'pending',
+          lines: norm.lines.length,
+          total: centsStr(norm.lines.reduce((s, l) => s + l.debit_cents, 0)),
+          next: '用戶喺桌面版「設置 → 待匯入 Voucher」一鍵匯入',
+        });
+      }
+      case 'list_pending_vouchers': {
+        const st = a.status || 'pending';
+        const rows = q(
+          'SELECT id, created_at, source, status, voucher_no, note, payload_json FROM pending_vouchers WHERE status=? ORDER BY id',
+          [st]);
+        return ok(rows.map((r) => {
+          let desc = '', date = '';
+          try { const p = JSON.parse(r.payload_json); desc = p.desc; date = p.date; } catch {}
+          return { id: r.id, created_at: r.created_at, source: r.source, status: r.status, voucher_no: r.voucher_no, date, desc, note: r.note };
+        }));
+      }
+      case 'get_pending_voucher': {
+        const r = one('SELECT * FROM pending_vouchers WHERE id=?', [Number(a.id)]);
+        if (!r) return err('搵唔到 pending voucher id=' + a.id);
+        const p = JSON.parse(r.payload_json);
+        p.attachments = (p.attachments || []).map((t) => ({
+          name: t.name, mime: t.mime,
+          size_bytes: t.dataB64 ? Math.floor(t.dataB64.length * 3 / 4) : 0,
+          has_content: !!t.dataB64,
+        }));
+        return ok({ id: r.id, created_at: r.created_at, source: r.source, status: r.status, voucher_no: r.voucher_no, note: r.note, voucher: p });
+      }
+      case 'reject_pending_voucher': {
+        const r = db.prepare("UPDATE pending_vouchers SET status='rejected' WHERE id=? AND status='pending'").run(Number(a.id));
+        if (!r.changes) return err('搵唔到待匯入 id=' + a.id + '（可能已匯入／已駁回）');
+        return ok({ id: Number(a.id), status: 'rejected' });
       }
       default:
         return err('未知 tool：' + name);
