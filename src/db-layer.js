@@ -94,8 +94,8 @@ CREATE TABLE IF NOT EXISTS attachments (
   seq        INTEGER NOT NULL DEFAULT 0, -- \u9644\u4EF6\u9663\u5217\u9806\u5E8F
   name       TEXT NOT NULL,
   mime       TEXT NOT NULL DEFAULT 'application/octet-stream',
-  path       TEXT -- \u9644\u4EF6\u6A94\u55BA app data \u76EE\u9304\u5605\u76F8\u5C0D\u8DEF\u5F91\uFF08glue \u5C64\u5BEB\u6A94\u5F8C\u586B\uFF09\uFF1BNULL=\u672A\u843D\u6A94
-  -- \u6CE8\u610F\uFF1A\u5462\u8868\u6C38\u9060\u5514\u5B58 dataURL
+  path       TEXT, -- v2 \u820A\u5236\uFF1A\u9644\u4EF6\u6A94\u76F8\u5C0D\u8DEF\u5F91\uFF1Bv3 \u8D77\u65B0\u9644\u4EF6\u5514\u518D\u843D\u6A94\uFF0C\u53EA\u505A fallback
+  data_b64   TEXT  -- v3 \u8D77\uFF1A\u9644\u4EF6\u5167\u5BB9 base64 \u5B58 SQLite\uFF08NULL=\u7121\u5167\u5BB9\uFF09\uFF1B\u55AE\u6A94\u5099\u4EFD\u3001\u5514\u6015\u5B64\u5152\u6A94
 );
 
 CREATE TABLE IF NOT EXISTS opening_balances (
@@ -258,10 +258,12 @@ CREATE TABLE IF NOT EXISTS app_state (
     const rawName = rec["name"];
     const rawMime = rec["mime"] ?? rec["type"];
     const rawPath = rec["path"];
+    const rawB64 = rec["dataB64"] ?? rec["data_b64"];
     return {
       name: typeof rawName === "string" && rawName ? rawName : "attachment",
       mime: typeof rawMime === "string" && rawMime ? rawMime : "application/octet-stream",
-      path: rawPath == null ? null : String(rawPath)
+      path: rawPath == null ? null : String(rawPath),
+      dataB64: typeof rawB64 === "string" && rawB64 ? rawB64 : null
     };
   }
   async function initDatabase(db) {
@@ -275,19 +277,20 @@ CREATE TABLE IF NOT EXISTS app_state (
       "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1"
     );
     const version = verRows.length ? num(verRows[0], "version") : 0;
-    if (version >= 2) return { version, needsMigration: false, isFresh: false };
-    if (version >= 1) return { version, needsMigration: true, isFresh: false };
+    if (version >= 3) return { version, needsMigration: false, needsBlobMigration: false, isFresh: false };
+    if (version === 2) return { version, needsMigration: false, needsBlobMigration: true, isFresh: false };
+    if (version >= 1) return { version, needsMigration: true, needsBlobMigration: false, isFresh: false };
     if (await tableExists(db, "kv_store")) {
       const appState = await db.select(
         "SELECT value FROM kv_store WHERE key = ? LIMIT 1",
         ["app_state"]
       );
-      if (appState.length) return { version: 0, needsMigration: true, isFresh: false };
+      if (appState.length) return { version: 0, needsMigration: true, needsBlobMigration: false, isFresh: false };
     }
-    return { version: 0, needsMigration: false, isFresh: true };
+    return { version: 0, needsMigration: false, needsBlobMigration: false, isFresh: true };
   }
   async function seedFresh(db) {
-    await db.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (2)");
+    await db.execute("INSERT OR IGNORE INTO schema_version(version) VALUES (3)");
   }
   async function writeAllTables(db, data) {
     const counts = {};
@@ -378,8 +381,8 @@ CREATE TABLE IF NOT EXISTS app_state (
         for (const raw of v.attachments ?? []) {
           const att = normalizeAttachment(raw);
           await db.execute(
-            "INSERT INTO attachments(voucher_no, seq, name, mime, path) VALUES (?, ?, ?, ?, ?)",
-            [v.no, aseq, att.name, att.mime, att.path]
+            "INSERT INTO attachments(voucher_no, seq, name, mime, path, data_b64) VALUES (?, ?, ?, ?, ?, ?)",
+            [v.no, aseq, att.name, att.mime, att.path, att.dataB64]
           );
           aseq++;
         }
@@ -536,7 +539,7 @@ CREATE TABLE IF NOT EXISTS app_state (
     await transaction(db, async () => {
       counts = await writeAllTables(db, payload.data);
       await db.execute("DROP TABLE IF EXISTS kv_store");
-      await db.execute("INSERT INTO schema_version(version) VALUES (2)");
+      await db.execute("INSERT INTO schema_version(version) VALUES (3)");
     });
     return counts;
   }
@@ -644,13 +647,14 @@ CREATE TABLE IF NOT EXISTS app_state (
         detail: str(lr, "detail")
       }));
       const attRows = await db.select(
-        "SELECT name, mime, path FROM attachments WHERE voucher_no = ? ORDER BY seq",
+        "SELECT name, mime, path, data_b64 FROM attachments WHERE voucher_no = ? ORDER BY seq",
         [no]
       );
       const attachments = attRows.map((ar) => ({
         name: str(ar, "name"),
         mime: str(ar, "mime"),
-        path: ar["path"] == null ? null : String(ar["path"])
+        path: ar["path"] == null ? null : String(ar["path"]),
+        dataB64: ar["data_b64"] == null ? null : String(ar["data_b64"])
       }));
       const v = {
         no,

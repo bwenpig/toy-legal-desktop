@@ -83,8 +83,8 @@ CREATE TABLE IF NOT EXISTS attachments (
   seq        INTEGER NOT NULL DEFAULT 0, -- 附件陣列順序
   name       TEXT NOT NULL,
   mime       TEXT NOT NULL DEFAULT 'application/octet-stream',
-  path       TEXT -- 附件檔喺 app data 目錄嘅相對路徑（glue 層寫檔後填）；NULL=未落檔
-  -- 注意：呢表永遠唔存 dataURL
+  path       TEXT, -- v2 舊制：附件檔相對路徑；v3 起新附件唔再落檔，只做 fallback
+  data_b64   TEXT  -- v3 起：附件內容 base64 存 SQLite（NULL=無內容）；單檔備份、唔怕孤兒檔
 );
 
 CREATE TABLE IF NOT EXISTS opening_balances (

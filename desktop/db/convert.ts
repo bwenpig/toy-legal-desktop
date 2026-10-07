@@ -53,6 +53,8 @@ export interface InitResult {
   version: number;
   /** true = 舊 v1（kv_store）庫，需要 migrateFromPayload */
   needsMigration: boolean;
+  /** true = v2 庫（附件仲係檔案制），要轉附件入 SQLite（v3） */
+  needsBlobMigration: boolean;
   /** true = 全新空庫（連 kv_store 都無） */
   isFresh: boolean;
 }
@@ -139,16 +141,20 @@ interface DbAttachment {
   name: string;
   mime: string;
   path: string | null;
+  /** v3：附件內容 base64（存 SQLite）；null = 無內容 */
+  dataB64: string | null;
 }
 function normalizeAttachment(a: unknown): DbAttachment {
   const rec = (a ?? {}) as Record<string, unknown>;
   const rawName = rec['name'];
   const rawMime = rec['mime'] ?? rec['type'];
   const rawPath = rec['path'];
+  const rawB64 = rec['dataB64'] ?? rec['data_b64'];
   return {
     name: typeof rawName === 'string' && rawName ? rawName : 'attachment',
     mime: typeof rawMime === 'string' && rawMime ? rawMime : 'application/octet-stream',
     path: rawPath == null ? null : String(rawPath),
+    dataB64: typeof rawB64 === 'string' && rawB64 ? rawB64 : null,
   };
 }
 
@@ -159,7 +165,8 @@ function normalizeAttachment(a: unknown): DbAttachment {
 /**
  * 建表（IF NOT EXISTS）＋ PRAGMAs（foreign_keys=ON、journal_mode=WAL、
  * synchronous=NORMAL），然後判讀庫狀態：
- * - schema_version ≥ 2 → 正常
+ * - schema_version ≥ 3 → 正常
+ * - schema_version = 2 → needsBlobMigration（附件檔案轉入 SQLite）
  * - schema_version = 1（或無記錄但 kv_store 有 app_state）→ needsMigration（v1）
  * - 連 kv_store 都無 → isFresh
  */
@@ -174,21 +181,22 @@ export async function initDatabase(db: DbPort): Promise<InitResult> {
     'SELECT version FROM schema_version ORDER BY version DESC LIMIT 1',
   );
   const version = verRows.length ? num(verRows[0], 'version') : 0;
-  if (version >= 2) return { version, needsMigration: false, isFresh: false };
-  if (version >= 1) return { version, needsMigration: true, isFresh: false };
+  if (version >= 3) return { version, needsMigration: false, needsBlobMigration: false, isFresh: false };
+  if (version === 2) return { version, needsMigration: false, needsBlobMigration: true, isFresh: false };
+  if (version >= 1) return { version, needsMigration: true, needsBlobMigration: false, isFresh: false };
   if (await tableExists(db, 'kv_store')) {
     const appState = await db.select(
       'SELECT value FROM kv_store WHERE key = ? LIMIT 1',
       ['app_state'],
     );
-    if (appState.length) return { version: 0, needsMigration: true, isFresh: false };
+    if (appState.length) return { version: 0, needsMigration: true, needsBlobMigration: false, isFresh: false };
   }
-  return { version: 0, needsMigration: false, isFresh: true };
+  return { version: 0, needsMigration: false, needsBlobMigration: false, isFresh: true };
 }
 
-/** 空庫 seed：INSERT schema_version(2)。 */
+/** 空庫 seed：INSERT schema_version(3)。 */
 export async function seedFresh(db: DbPort): Promise<void> {
-  await db.execute('INSERT OR IGNORE INTO schema_version(version) VALUES (2)');
+  await db.execute('INSERT OR IGNORE INTO schema_version(version) VALUES (3)');
 }
 
 // ---------------------------------------------------------------------------
@@ -295,8 +303,8 @@ async function writeAllTables(db: DbPort, data: BackupData): Promise<TableCounts
       for (const raw of v.attachments ?? []) {
         const att = normalizeAttachment(raw);
         await db.execute(
-          'INSERT INTO attachments(voucher_no, seq, name, mime, path) VALUES (?, ?, ?, ?, ?)',
-          [v.no, aseq, att.name, att.mime, att.path],
+          'INSERT INTO attachments(voucher_no, seq, name, mime, path, data_b64) VALUES (?, ?, ?, ?, ?, ?)',
+          [v.no, aseq, att.name, att.mime, att.path, att.dataB64],
         );
         aseq++;
       }
@@ -476,9 +484,10 @@ async function writeAllTables(db: DbPort, data: BackupData): Promise<TableCounts
 }
 
 /**
- * v1（kv_store）→ v2 遷移。payload.data 必須係 app 已正規化嘅 v2 數據
+ * v1（kv_store）→ v2/v3 遷移。payload.data 必須係 app 已正規化嘅 v2 數據
  * （glue 先經 prepareRestore；金額已係整數分）。
- * 單一 transaction：寫全部表 → DROP TABLE kv_store → INSERT schema_version(2)。
+ * 單一 transaction：寫全部表 → DROP TABLE kv_store → INSERT schema_version(3)。
+ * （附件經 glue extractAttachments 已轉 dataB64，所以直接係 v3。）
  * 注意：唔做 .db 檔備份，嗰個係 glue 層責任（見 SCHEMA.md §4 backupDbFile）。
  * 回傳每表筆數供驗證。
  */
@@ -490,7 +499,7 @@ export async function migrateFromPayload(
   await transaction(db, async () => {
     counts = await writeAllTables(db, payload.data);
     await db.execute('DROP TABLE IF EXISTS kv_store');
-    await db.execute('INSERT INTO schema_version(version) VALUES (2)');
+    await db.execute('INSERT INTO schema_version(version) VALUES (3)');
   });
   return counts;
 }
@@ -622,13 +631,14 @@ export async function loadPayload(db: DbPort): Promise<BackupPayload | null> {
       detail: str(lr, 'detail'),
     }));
     const attRows = await db.select(
-      'SELECT name, mime, path FROM attachments WHERE voucher_no = ? ORDER BY seq',
+      'SELECT name, mime, path, data_b64 FROM attachments WHERE voucher_no = ? ORDER BY seq',
       [no],
     );
     const attachments: DbAttachment[] = attRows.map((ar) => ({
       name: str(ar, 'name'),
       mime: str(ar, 'mime'),
       path: ar['path'] == null ? null : String(ar['path']),
+      dataB64: ar['data_b64'] == null ? null : String(ar['data_b64']),
     }));
     const v: Voucher = {
       no,

@@ -4,7 +4,7 @@
  *
  * headless Chromium 載入實際 src/index.html，mock __TAURI_INTERNALS__.invoke
  * 接真 SQLite 檔（node:sqlite），驗證：
- *  - badge v3.17.2 / __TG__.desktopVersion / __TG_DB__ 存在
+ *  - badge v3.18.0 / __TG__.desktopVersion / __TG_DB__ 存在
  *  - 啟動：全新 DB → 空白賬套
  *  - importExcelData 匯入科目 → UI 入銷貨 voucher
  *  - 關聯表有數（vouchers / voucher_lines，金額係整數分）
@@ -181,20 +181,20 @@ function makeV1Sample(){
   // T1 badge（桌面版＋核心兩個版本；Web 核心版本喺 S2 驗）
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('T1 badge 顯示 v3.17.2＋核心 v3.15.1', badge === 'v3.17.2核心 v3.15.1', String(badge));
+  check('T1 badge 顯示 v3.18.0＋核心 v3.15.1', badge === 'v3.18.0核心 v3.15.1', String(badge));
   // T2 bridge
   const tgVer = await page.evaluate(() => window.__TG__ && window.__TG__.desktopVersion);
-  check('T2 __TG__.desktopVersion = 3.17.2', tgVer === "3.17.2", String(tgVer));
+  check('T2 __TG__.desktopVersion = 3.18.0', tgVer === "3.18.0", String(tgVer));
   const hasDb = await page.evaluate(() => !!window.__TG_DB__);
   check('T3 __TG_DB__ 存在', hasDb);
   // T4 啟動狀態（全新 DB → 空白賬套）
   const status = await page.evaluate(() =>
     (document.getElementById('backupStatus') || {}).textContent || '');
   check('T4 啟動狀態', /空白|載入/.test(status), status.slice(0, 40));
-  // T5 schema_version = 2
+  // T5 schema_version = 3
   let ver = null;
   try { ver = mockSelect('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1')[0]; } catch (e) {}
-  check('T5 schema_version = 2', ver && ver.version === 2, JSON.stringify(ver));
+  check('T5 schema_version = 3', ver && ver.version === 3, JSON.stringify(ver));
   // T6 關聯表存在
   const tables = mockSelect("SELECT name FROM sqlite_master WHERE type='table'").map((r) => r.name);
   check('T6 關聯表齊全', ['vouchers', 'voucher_lines', 'accounts', 'fiscal_years', 'attachments'].every((t) => tables.includes(t)),
@@ -335,8 +335,8 @@ function makeV1Sample(){
   const appHidden = await page.evaluate(() => document.getElementById('appShell').style.display === 'none');
   check('S1 設置畫面開啟＋隱藏 app', setVisible && appHidden);
   const setVer = await page.evaluate(() => document.querySelector('.tgset-ver').textContent);
-  check('S2 版本：桌面版 3.17.2＋Web核心 v3.15.1',
-    /3\.17\.2/.test(setVer) && /v3\.15\.1/.test(setVer),
+  check('S2 版本：桌面版 3.18.0＋Web核心 v3.15.1',
+    /3\.18\.0/.test(setVer) && /v3\.15\.1/.test(setVer),
     setVer.trim().replace(/\s+/g, ' ').slice(0, 70));
   // S3/S4 表預覽
   await sleep(800);
@@ -464,7 +464,7 @@ function makeV1Sample(){
   await sleep(3000);
   const migVer = curDb().prepare('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1').get();
   const migV = curDb().prepare('SELECT COUNT(*) AS c FROM vouchers').get().c;
-  check('S11 v1 切換自動 migration', migVer && migVer.version === 2 && migV >= 1,
+  check('S11 v1 切換自動 migration', migVer && migVer.version === 3 && migV >= 1,
     'schema=' + (migVer && migVer.version) + ', vouchers=' + migV);
   // ---- X. Excel 完整支援 ----
   const XLSX = require('xlsx');
@@ -567,6 +567,37 @@ function makeV1Sample(){
     }
     check('X3e 附件 hyperlink', linkOk);
     check('X3f 總表凍結窗格', freezeOk);
+  }
+
+  // B1–B3 附件入 SQLite（v3）
+  {
+    // B1：X3 匯入嘅附件存咗入 DB（data_b64），唔係寫實體檔
+    const attRow = curDb().prepare('SELECT data_b64, path FROM attachments WHERE name = ?').get('receipt.txt');
+    const noAttDir = !fs.existsSync(path.join(WORK, 'attachments'));
+    const expB64 = Buffer.from('hello-world').toString('base64');
+    check('B1 附件入 DB（data_b64 有料、無 path、無寫檔）',
+      !!attRow && attRow.data_b64 === expB64 && attRow.path == null && noAttDir,
+      attRow ? ('b64=' + String(attRow.data_b64).slice(0, 20) + ' path=' + attRow.path + ' noDir=' + noAttDir) : 'no row');
+    // B2：附件 dataB64 → dataURL 還原正常（app 照常用）
+    const payload2 = await page.evaluate(() => window.__TG__.createBackupPayload());
+    const vAtt = ((payload2.data.vouchers[0] || {}).attachments || [])[0];
+    check('B2 附件 dataURL 還原正常',
+      !!vAtt && vAtt.dataURL === 'data:text/plain;base64,' + expB64,
+      vAtt ? String(vAtt.dataURL).slice(0, 40) : 'no att');
+    // B3：v2→v3 migration（模擬舊檔制附件入庫）
+    const migDir = path.join(WORK, 'attachments', 'MIGV');
+    fs.mkdirSync(migDir, { recursive: true });
+    fs.writeFileSync(path.join(migDir, 'old.txt'), 'migrated-content');
+    curDb().prepare("INSERT INTO vouchers(no, type, date) VALUES ('MIGV','B','2026-10-01')").run();
+    curDb().prepare("INSERT INTO attachments(voucher_no, seq, name, mime, path) VALUES ('MIGV',0,'old.txt','text/plain','attachments/MIGV/old.txt')").run();
+    const migRes = await page.evaluate(() => window.__TG_DESKTOP__.migrateAttachmentsToDb());
+    const migRow = curDb().prepare("SELECT data_b64 FROM attachments WHERE voucher_no='MIGV'").get();
+    const verRow = curDb().prepare('SELECT version FROM schema_version ORDER BY version DESC LIMIT 1').get();
+    const expMigB64 = Buffer.from('migrated-content').toString('base64');
+    check('B3 v2→v3 附件入庫＋版本升3',
+      migRes.ok === 1 && migRes.fail === 0 && migRow.data_b64 === expMigB64 && verRow.version === 3,
+      JSON.stringify(migRes) + ' ver=' + verRow.version);
+    curDb().prepare("DELETE FROM vouchers WHERE no='MIGV'").run(); // 清理（CASCADE 刪附件）
   }
 
   // X4 報表 xlsx 執靚

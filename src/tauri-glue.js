@@ -188,42 +188,40 @@ function dataURLToParts(dataURL){
                    : new TextEncoder().encode(decodeURIComponent(m[3]));
   return { mime: mime, bytes: bytes };
 }
-function bytesToDataURL(bytes, mime){
+function bytesToBase64(bytes){
   var bin = '', CH = 0x8000, i;
   for(i = 0; i < bytes.length; i += CH)
     bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
-  return 'data:' + (mime || 'application/octet-stream') + ';base64,' + btoa(bin);
+  return btoa(bin);
+}
+function bytesToDataURL(bytes, mime){
+  return 'data:' + (mime || 'application/octet-stream') + ';base64,' + bytesToBase64(bytes);
 }
 function eachVoucherWithAttachment(payload, fn){
   var vs = (payload.data && payload.data.vouchers) || [];
   if(payload.data && payload.data.workingVoucher) vs = vs.concat([payload.data.workingVoucher]);
   vs.forEach(fn);
 }
-/* persist 前：data URL 抽出存檔，attachment 改記 {name, type, mime, path}
-  （db-layer 只存 metadata，唔存 dataURL） */
-async function extractAttachments(payload){
-  var base = await appDataDir(), jobs = [];
+/* persist 前：data URL 抽出 base64 存 SQLite（v3 起唔再寫實體檔）。
+ * attachment 改記 {name, mime, dataB64}，db-layer 寫入 attachments.data_b64。 */
+function extractAttachments(payload){
   eachVoucherWithAttachment(payload, function(v){
     var atts = v && v.attachments;
     if(!Array.isArray(atts)) return;
     atts.forEach(function(att){
       if(att && typeof att.dataURL === 'string' && att.dataURL.indexOf('data:') === 0){
-        jobs.push((async function(){
-          var parts = dataURLToParts(att.dataURL);
-          var vdir = base + '/attachments/' + sanitizeName(v.no || 'unnumbered');
-          await fsMkdir(vdir);
-          var fname = sanitizeName(att.name || 'attachment');
-          await fsWriteBytes(vdir + '/' + fname, parts.bytes);
-          delete att.dataURL;
-          att.mime = parts.mime;
-          att.path = 'attachments/' + sanitizeName(v.no || 'unnumbered') + '/' + fname;
-        })());
+        var parts = dataURLToParts(att.dataURL);
+        att.dataB64 = bytesToBase64(parts.bytes);
+        att.mime = parts.mime;
+        delete att.dataURL;
+        delete att.path;   // v3 起唔用檔案制
+        delete att.relPath;
       }
     });
   });
-  await Promise.all(jobs);
 }
-/* hydrate 前：路徑讀返轉做 data URL，交返 app 原有邏輯 */
+/* hydrate 前：dataB64 還原做 data URL，交返 app 原有邏輯。
+ * v2 舊制（有 path 無 dataB64）fallback 讀檔，讀唔到就當無附件。 */
 async function reconstituteAttachments(payload){
   var base = await appDataDir();
   var jobs = [];
@@ -231,7 +229,10 @@ async function reconstituteAttachments(payload){
     var atts = v && v.attachments;
     if(!Array.isArray(atts)) return;
     atts.forEach(function(att){
-      if(att && att.path && !att.dataURL){
+      if(att && att.dataB64 && !att.dataURL){
+        att.dataURL = 'data:' + (att.mime || att.type || 'application/octet-stream') +
+          ';base64,' + att.dataB64;
+      }else if(att && att.path && !att.dataURL && !att.dataB64){
         jobs.push((async function(){
           try{
             var bytes = await fsReadBytes(base + '/' + att.path);
@@ -242,6 +243,35 @@ async function reconstituteAttachments(payload){
     });
   });
   await Promise.all(jobs);
+}
+
+/* ---------- 3b. v2→v3 migration：附件檔案入 SQLite ---------- */
+async function migrateAttachmentsToDb(){
+  var base = await appDataDir();
+  try{ await dbPort.execute('ALTER TABLE attachments ADD COLUMN data_b64 TEXT'); }
+  catch(e){ /* 欄已存在（全新 v3 schema），繼續 */ }
+  var rows = [];
+  try{
+    rows = await dbPort.select(
+      'SELECT id, path FROM attachments WHERE path IS NOT NULL AND data_b64 IS NULL');
+  }catch(e){ console.warn('[desktop] v2→v3：讀附件列表失敗', e); }
+  var ok = 0, fail = 0;
+  for(var i = 0; i < rows.length; i++){
+    try{
+      var bytes = await fsReadBytes(base + '/' + rows[i].path);
+      await dbPort.execute('UPDATE attachments SET data_b64 = ? WHERE id = ?',
+        [bytesToBase64(bytes), rows[i].id]);
+      ok++;
+    }catch(e){ fail++; console.warn('[desktop] v2→v3：附件入庫失敗 ' + rows[i].path, e); }
+  }
+  // 舊附件目錄改名做備份（app 之後唔再讀寫佢；用戶確認無誤可手動刪除）
+  try{
+    await invoke('plugin:fs|rename',
+      { oldPath: base + '/attachments', newPath: base + '/attachments.pre-v3-backup' });
+  }catch(e){ /* 無目錄／改名失敗都唔阻 migration */ }
+  await dbPort.execute('INSERT OR IGNORE INTO schema_version(version) VALUES (3)');
+  console.log('[desktop] v2→v3 附件入庫完成：' + ok + ' 成功，' + fail + ' 失敗');
+  return { ok: ok, fail: fail };
 }
 
 /* ---------- 4. 持久化（debounced + hash 去重，單一 transaction） ---------- */
@@ -343,7 +373,7 @@ async function startup(){
  * isStartup 只影響狀態文字。 */
 async function loadAppStateFromDb(init, isStartup){
   if(init.isFresh){
-    // 全新：建 schema_version(2)，空白賬套起步
+    // 全新：建 schema_version(3)，空白賬套起步
     await DB.seedFresh(dbPort);
     TG.blankStart();
     lastStableHash = null;
@@ -352,8 +382,9 @@ async function loadAppStateFromDb(init, isStartup){
     return;
   }
   if(init.needsMigration){
-    // v1 → v2：先備份 .db，再經 app 自身 prepareRestore 正規化後寫入關聯表
-    setStatus('正在升級本機數據庫（v1→v2）…');
+    // v1 → v2/v3：先備份 .db，再經 app 自身 prepareRestore 正規化後寫入關聯表
+    //（附件經 extractAttachments 已轉 dataB64，直接入 v3）
+    setStatus('正在升級本機數據庫（v1→v3）…');
     await backupDbFile('pre-v2-migration');
     var raw = await kvGetLegacy('app_state');
     if(raw){
@@ -368,10 +399,17 @@ async function loadAppStateFromDb(init, isStartup){
         data: res.prepared
       };
       var counts = await DB.migrateFromPayload(dbPort, normalized);
-      console.log('[desktop] migration v1→v2 完成：', JSON.stringify(counts));
+      console.log('[desktop] migration v1→v3 完成：', JSON.stringify(counts));
     }else{
       await DB.seedFresh(dbPort);
     }
+  }
+  if(init.needsBlobMigration){
+    // v2 → v3：附件檔案入 SQLite（先備份 .db）
+    setStatus('正在升級本機數據庫（v2→v3：附件入庫）…');
+    await backupDbFile('pre-v3-migration');
+    var mig = await migrateAttachmentsToDb();
+    setStatus('附件入庫完成：' + mig.ok + ' 個成功' + (mig.fail ? '，' + mig.fail + ' 個失敗（見 console）' : ''));
   }
   var dbPayload = await DB.loadPayload(dbPort);
   if(dbPayload){
@@ -379,7 +417,7 @@ async function loadAppStateFromDb(init, isStartup){
     var prepared = await TG.prepareRestore(dbPayload);
     TG.applyPreparedRestore(prepared.prepared);
     lastStableHash = strHash(stablePayloadString(dbPayload));
-    setStatus(init.needsMigration ? '數據庫已升級到 v2，本機賬套已載入' : '已載入本機賬套');
+    setStatus(init.needsMigration ? '數據庫已升級到 v3，本機賬套已載入' : '已載入本機賬套');
   }else{
     // v2 表係空（唔應該發生）：空白起步
     TG.blankStart();
@@ -727,6 +765,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.18.0', '附件入 SQLite：附件內容改存數據庫（base64），唔再寫實體檔；單檔備份、唔怕孤兒檔；v2 舊庫自動遷移（先備份 DB，舊附件目錄改名保留）。'],
   ['3.17.2', '修復 JSON 匯入讀檔 bug：真 Tauri 回傳 ArrayBuffer，舊代碼轉換出空字串導致「Unexpected EOF」；讀檔改用官方 plugin-fs 寫法。'],
   ['3.17.1', 'Badge 同時顯示桌面版＋核心版本；簽名列自適應（窄位自動換行唔爆出）；工具條可收起／展開（收起只顯示財政年度列）。'],
   ['3.17.0', 'Excel 完整支援：Voucher 批量匯入（範本＋驗證＋預覽）、Voucher 批量匯出俾會計師（總表＋明細＋附件 zip）、報表 xlsx 執靚（凍結窗格／列印標題／標題加粗／自動篩選）。'],
@@ -993,7 +1032,10 @@ async function previewTable(t){
   box.innerHTML = '<p class="muted small">載入中…</p>';
   try{
     var cols = await dbPort.select('PRAGMA table_info(' + quoteIdent(t) + ')');
-    var rows = await dbPort.select('SELECT * FROM ' + quoteIdent(t) + ' LIMIT 100');
+    // attachments 表唔直接 SELECT data_b64（base64 好大），只顯示字節數
+    var rows = (t === 'attachments')
+      ? await dbPort.select('SELECT id, voucher_no, seq, name, mime, path, length(data_b64) AS data_b64_bytes FROM attachments LIMIT 100')
+      : await dbPort.select('SELECT * FROM ' + quoteIdent(t) + ' LIMIT 100');
     var html = '<p><strong>' + escHtml(t) + '</strong> <span class="muted small">頭 ' + rows.length +
       ' 行（最多 100 行，只讀）</span></p>' +
       '<div class="tgset-gridwrap"><table class="tgset-grid"><thead><tr>';
@@ -1080,7 +1122,7 @@ async function doImportJson(){
     await extractAttachments(normalized);
     var counts = await DB.persistPayload(dbPort, normalized);
     console.log('[desktop] settings import 完成：', JSON.stringify(counts));
-    await loadAppStateFromDb({ isFresh: false, needsMigration: false, version: 2 }, false);
+    await loadAppStateFromDb({ isFresh: false, needsMigration: false, needsBlobMigration: false, version: 3 }, false);
     dbWriteEnabled = true;
     lastStableHash = null;
     await persistNow();
@@ -1347,5 +1389,12 @@ if(document.readyState === 'loading')
   document.addEventListener('DOMContentLoaded', function(){ startup(); });
 else
   startup();
+
+/* 測試／除錯鉤（唯讀暴露內部函數，唔影響正常流程） */
+window.__TG_DESKTOP__ = {
+  migrateAttachmentsToDb: migrateAttachmentsToDb,
+  extractAttachments: extractAttachments,
+  reconstituteAttachments: reconstituteAttachments
+};
 
 })();
