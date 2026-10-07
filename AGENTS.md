@@ -64,7 +64,9 @@ scripts/
 ## 鐵律
 
 1. **唔好影響 web 版**：桌面獨有改動只做呢個 repo；`web-src/` 唯讀；唔好掂公開 artifact／`hk-legal-dora`。
-2. 每次改版（無論功能定純文字）：遞增桌面版本號 → `DESKTOP_CHANGELOG`（`src/tauri-glue.js`）寫明改咗咩 → smoke 全 PASS → 等用戶「發佈」指令先出包。
+2. 每次改版（無論功能定純文字）：遞增桌面版本號 → `DESKTOP_CHANGELOG`（`src/tauri-glue.js`）寫明改咗咩 → smoke 全 PASS → GitHub release（tag `vX.Y.Z`＋上傳 Mac source tarball）→ 等用戶「發佈」指令先出包。
+   Mac source 打包：`tar --exclude=node_modules --exclude='src-tauri/target' --exclude='*.bak' --exclude=.git -czf toys-gallery-desktop-mac-src-vX.Y.Z.tar.gz .`
+   Release：`gh release create vX.Y.Z <tarball> --repo bwenpig/toy-legal-desktop`
 3. 用戶原則：「有唔明白直接問，不要自己做主」——唔好估，問。
 
 ## 開發流程
