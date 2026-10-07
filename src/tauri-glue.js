@@ -765,6 +765,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.21.1', '修復設置界面深色模式睇唔到字：改用 app 本身嘅 --ink／--line／--surface-2 變量。'],
   ['3.21.0', 'MCP 加 voucher 錄入：create_voucher（驗證借貸平衡／科目存在後排入待匯入）＋設置「待匯入 Voucher」一鍵匯入；手寫單相片經 Codex 識別流程見 mcp-server/VOUCHER_ENTRY.md。'],
   ['3.20.0', '設置新增「附件管理」（統計／列表／異常檢查／匯出全部／刪除舊備份）同「MCP 服務」（一鍵複製 Codex 接入設定）。'],
   ['3.19.0', '新增 MCP Server（mcp-server/）：Codex 等 AI 可經 MCP 唯讀查詢賬套（voucher／明細賬／附件／SQL）；金額回整數分＋dollars 字串。'],
@@ -797,28 +798,29 @@ function injectSettingsNav(){
 function injectSettingsView(){
   if(document.getElementById('tgSettingsView')) return;
   var css =
-    '#tgSettingsView{position:fixed;inset:0;z-index:9999;overflow:auto;background:var(--bg,#f4f1ea);color:var(--text,#222);}' +
+    '#tgSettingsView{position:fixed;inset:0;z-index:9999;overflow:auto;background:var(--bg,#f4f1ea);color:var(--ink,#222);}' +
     '#tgSettingsView[hidden]{display:none;}' +
     '.tgset-top{max-width:960px;margin:0 auto;padding:20px 20px 0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}' +
     '.tgset-top h2{margin:0;}' +
-    '.tgset-ver{color:#888;font-size:13px;margin-top:4px;}' +
-    '.tgset-changelog{max-width:960px;margin:12px auto 0;padding:12px 20px;background:var(--surface,#fff);border:1px solid var(--border,#e2ddd2);border-radius:8px;}' +
+    '.tgset-ver{color:var(--muted,#888);font-size:13px;margin-top:4px;}' +
+    '.tgset-changelog{max-width:960px;margin:12px auto 0;padding:12px 20px;background:var(--surface,#fff);border:1px solid var(--line,#e2ddd2);border-radius:8px;}' +
     '.tgset-changelog ul{margin:6px 0 0;padding-left:20px;}' +
     '.tgset-changelog li{margin:4px 0;}' +
-    '.tgset-sec{max-width:960px;margin:12px auto 0;padding:16px 20px;background:var(--surface,#fff);border:1px solid var(--border,#e2ddd2);border-radius:8px;}' +
+    '.tgset-sec{max-width:960px;margin:12px auto 0;padding:16px 20px;background:var(--surface,#fff);border:1px solid var(--line,#e2ddd2);border-radius:8px;}' +
     '.tgset-sec h3{margin:0 0 8px;}' +
-    '.tgset-sec code{word-break:break-all;background:#f0ede6;padding:2px 6px;border-radius:4px;font-size:12px;}' +
+    '.tgset-sec code{word-break:break-all;background:var(--surface-2,#f0ede6);color:var(--ink,#222);padding:2px 6px;border-radius:4px;font-size:12px;}' +
     '.tgset-status{max-width:960px;margin:12px auto 32px;padding:0 20px;min-height:24px;font-weight:bold;}' +
-    '.tgset-gridwrap{overflow:auto;max-height:420px;border:1px solid #e2ddd2;border-radius:6px;margin-top:8px;}' +
+    '.tgset-gridwrap{overflow:auto;max-height:420px;border:1px solid var(--line,#e2ddd2);border-radius:6px;margin-top:8px;}' +
     '.tgset-grid{border-collapse:collapse;font-size:12px;min-width:100%;}' +
-    '.tgset-grid th,.tgset-grid td{border:1px solid #e8e4d9;padding:4px 8px;text-align:left;white-space:nowrap;}' +
-    '.tgset-grid th{background:#f5f2ea;position:sticky;top:0;}' +
+    '.tgset-grid th,.tgset-grid td{border:1px solid var(--line,#e8e4d9);padding:4px 8px;text-align:left;white-space:nowrap;}' +
+    '.tgset-grid th{background:var(--surface-2,#f5f2ea);position:sticky;top:0;}' +
     '.tgset-tablebtn{margin:2px;}' +
-    '#tgDbSwitchConfirm,#tgImportSummary{margin-top:10px;padding:12px;border:1px dashed #c9a227;border-radius:6px;background:#fffdf5;}' +
+    '#tgDbSwitchConfirm,#tgImportSummary{margin-top:10px;padding:12px;border:1px dashed #c9a227;border-radius:6px;background:var(--surface-2,#fffdf5);}' +
     '#tgDbSwitchConfirm[hidden],#tgImportSummary[hidden]{display:none;}' +
-    '.tgset-sec .muted{color:#888;}' +
+    '.tgset-sec .muted{color:var(--muted,#888);}' +
     '.tgset-sec .small{font-size:12px;}' +
-    '.tgset-sec .error{color:#c00;}';
+    '.tgset-sec .error{color:var(--bad,#c00);}' +
+    '#tgMcpConfig{background:var(--surface-2,#f0ede6)!important;color:var(--ink,#222)!important;}';
   var style = document.createElement('style');
   style.id = 'tgSettingsStyle';
   style.textContent = css;
@@ -866,7 +868,7 @@ function injectSettingsView(){
     '<section class="tgset-sec"><h3>MCP 服務 <span class="muted small">（俾 Codex 等 AI 唯讀查詢賬套）</span></h3>' +
     '<p class="muted small">MCP Server 以唯讀方式開啟數據庫，唔會影響正常使用，亦唔會改到數據。' +
     'Codex 喺 <code>~/.codex/config.toml</code> 加入以下設定即可接入（DB 路徑已自動填好）：</p>' +
-    '<pre id="tgMcpConfig" style="background:#f0ede6;padding:10px 12px;border-radius:6px;font-size:12px;overflow:auto;white-space:pre-wrap;word-break:break-all;">（載入中…）</pre>' +
+    '<pre id="tgMcpConfig" style="padding:10px 12px;border-radius:6px;font-size:12px;overflow:auto;white-space:pre-wrap;word-break:break-all;">（載入中…）</pre>' +
     '<p><button class="btn" id="tgMcpCopyCfg" type="button">複製 Codex 設定</button> ' +
     '<button class="btn" id="tgMcpCopyPath" type="button">複製 DB 路徑</button> ' +
     '<span class="muted small" id="tgMcpNote"></span></p></section>' +
