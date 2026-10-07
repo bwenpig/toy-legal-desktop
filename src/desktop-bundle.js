@@ -3156,7 +3156,7 @@
     return { addedAccounts, skippedAccounts, setOpening, openingErrors };
   }
   var bridge = {
-    desktopVersion: "3.17.1",
+    desktopVersion: "3.17.2",
     createBackupPayload,
     validateBackup,
     prepareRestore,

@@ -115,7 +115,20 @@ async function fsMkdir(path){
 }
 async function fsReadBytes(path){
   var arr = await invoke('plugin:fs|read_file', { path: path });
-  return (arr instanceof Uint8Array) ? arr : Uint8Array.from(arr);
+  // 真 Tauri 回傳 ArrayBuffer（唔係 Uint8Array 亦唔係 Array）；
+  // Uint8Array.from(arrayBuffer) 會靜靜出空 array，必須先轉。
+  // （對齊 @tauri-apps/plugin-fs 官方 readFile 寫法）
+  if(arr instanceof Uint8Array) return arr;
+  if(arr instanceof ArrayBuffer) return new Uint8Array(arr);
+  if(Array.isArray(arr)) return Uint8Array.from(arr);
+  if(arr && typeof arr === 'object'){ // {0:..,1:..} plain object fallback
+    var keys = Object.keys(arr).filter(function(k){ return /^\d+$/.test(k); })
+      .map(Number).sort(function(a,b){ return a - b; });
+    var out = new Uint8Array(keys.length);
+    for(var i = 0; i < keys.length; i++) out[i] = arr[keys[i]] & 0xff;
+    return out;
+  }
+  throw new Error('讀檔回傳格式異常（' + (arr === null ? 'null' : typeof arr) + '）');
 }
 async function fsReadText(path){
   return new TextDecoder().decode(await fsReadBytes(path));
@@ -714,6 +727,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.17.2', '修復 JSON 匯入讀檔 bug：真 Tauri 回傳 ArrayBuffer，舊代碼轉換出空字串導致「Unexpected EOF」；讀檔改用官方 plugin-fs 寫法。'],
   ['3.17.1', 'Badge 同時顯示桌面版＋核心版本；簽名列自適應（窄位自動換行唔爆出）；工具條可收起／展開（收起只顯示財政年度列）。'],
   ['3.17.0', 'Excel 完整支援：Voucher 批量匯入（範本＋驗證＋預覽）、Voucher 批量匯出俾會計師（總表＋明細＋附件 zip）、報表 xlsx 執靚（凍結窗格／列印標題／標題加粗／自動篩選）。'],
   ['3.16.0', '新增「桌面設置」：指定數據庫位置、數據庫表預覽、從 Web JSON 匯入到 SQLite。'],

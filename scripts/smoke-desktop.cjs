@@ -4,7 +4,7 @@
  *
  * headless Chromium 載入實際 src/index.html，mock __TAURI_INTERNALS__.invoke
  * 接真 SQLite 檔（node:sqlite），驗證：
- *  - badge v3.17.1 / __TG__.desktopVersion / __TG_DB__ 存在
+ *  - badge v3.17.2 / __TG__.desktopVersion / __TG_DB__ 存在
  *  - 啟動：全新 DB → 空白賬套
  *  - importExcelData 匯入科目 → UI 入銷貨 voucher
  *  - 關聯表有數（vouchers / voucher_lines，金額係整數分）
@@ -94,6 +94,8 @@ async function mockInvoke(cmd, a, options) {
     return;
   }
   if (cmd === 'plugin:fs|read_file') {
+    // 注意：真 Tauri 回傳 ArrayBuffer，但 exposeFunction 傳唔到 ArrayBuffer（變 {}），
+    // 所以呢度回傳 Array；ArrayBuffer 分支由 U5 在頁內直接構造測試。
     const buf = fs.readFileSync(a.path);
     return Array.from(buf);
   }
@@ -179,10 +181,10 @@ function makeV1Sample(){
   // T1 badge（桌面版＋核心兩個版本；Web 核心版本喺 S2 驗）
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('T1 badge 顯示 v3.17.1＋核心 v3.15.1', badge === 'v3.17.1核心 v3.15.1', String(badge));
+  check('T1 badge 顯示 v3.17.2＋核心 v3.15.1', badge === 'v3.17.2核心 v3.15.1', String(badge));
   // T2 bridge
   const tgVer = await page.evaluate(() => window.__TG__ && window.__TG__.desktopVersion);
-  check('T2 __TG__.desktopVersion = 3.17.1', tgVer === "3.17.1", String(tgVer));
+  check('T2 __TG__.desktopVersion = 3.17.2', tgVer === "3.17.2", String(tgVer));
   const hasDb = await page.evaluate(() => !!window.__TG_DB__);
   check('T3 __TG_DB__ 存在', hasDb);
   // T4 啟動狀態（全新 DB → 空白賬套）
@@ -333,8 +335,8 @@ function makeV1Sample(){
   const appHidden = await page.evaluate(() => document.getElementById('appShell').style.display === 'none');
   check('S1 設置畫面開啟＋隱藏 app', setVisible && appHidden);
   const setVer = await page.evaluate(() => document.querySelector('.tgset-ver').textContent);
-  check('S2 版本：桌面版 3.17.1＋Web核心 v3.15.1',
-    /3\.17\.1/.test(setVer) && /v3\.15\.1/.test(setVer),
+  check('S2 版本：桌面版 3.17.2＋Web核心 v3.15.1',
+    /3\.17\.2/.test(setVer) && /v3\.15\.1/.test(setVer),
     setVer.trim().replace(/\s+/g, ' ').slice(0, 70));
   // S3/S4 表預覽
   await sleep(800);
@@ -414,6 +416,35 @@ function makeV1Sample(){
   const v1centsRows = curDb().prepare("SELECT debit_cents, credit_cents FROM voucher_lines WHERE voucher_no='B010101' ORDER BY line_index").all();
   const v1centsOk = v1centsRows.length === 2 && v1centsRows[0].debit_cents === 10010 && v1centsRows[1].credit_cents === 10010;
   check('S10c v1 浮點 100.1→10010 分', v1centsOk, JSON.stringify(v1centsRows));
+  // U5 ArrayBuffer 讀檔（真 Tauri 行為）：頁內構造真 ArrayBuffer 回傳，
+  // 驗 fsReadBytes 識得轉（之前 bug：Uint8Array.from(arrayBuffer) 出空→JSON EOF）
+  const abPath = path.join(WORK, 'sample-ab.json');
+  const abJson = JSON.stringify(makeV1Sample());
+  fs.writeFileSync(abPath, abJson);
+  mockDialogOpenQueue.push(abPath);
+  await page.evaluate((p, txt) => {
+    const internals = window.__TAURI_INTERNALS__;
+    if (!internals.__origInvoke) internals.__origInvoke = internals.invoke;
+    internals.invoke = async (cmd, args, opts) => {
+      if (cmd === 'plugin:fs|read_file' && args && args.path === p) {
+        return new TextEncoder().encode(txt).buffer; // 真 ArrayBuffer，同真 Tauri 一樣
+      }
+      return internals.__origInvoke(cmd, args, opts);
+    };
+  }, abPath, abJson);
+  await page.evaluate(() => document.getElementById('tgPickJson').click());
+  await sleep(1200);
+  const abSum = await page.evaluate(() => document.getElementById('tgImportSummary').innerText);
+  const abOk = await page.evaluate(() =>
+    !document.getElementById('tgImportSummary').hidden &&
+    /Voucher/.test(document.getElementById('tgImportSummary').innerText) &&
+    !/讀取失敗/.test(document.getElementById('tgSettingsStatus').textContent));
+  check('U5 ArrayBuffer 讀檔匯入摘要正常', abOk, abSum.replace(/\n/g, ' ').slice(0, 100));
+  await page.evaluate(() => {
+    const internals = window.__TAURI_INTERNALS__;
+    if (internals.__origInvoke) { internals.invoke = internals.__origInvoke; delete internals.__origInvoke; }
+    document.getElementById('tgImportCancel').click();
+  });
   // S11 v1 舊庫切換→自動 migration
   const v1dir = path.join(WORK, 'v1loc');
   fs.mkdirSync(v1dir, { recursive: true });
