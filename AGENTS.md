@@ -7,7 +7,7 @@
 - 香港 **Toys Gallery International Limited** 會計系統嘅桌面版。
 - **Tauri 2 + SQLite**（`@tauri-apps/plugin-sql`），本地單機運行，無後端 server。
 - 功能同 web 版完全一樣：Voucher 入賬（借貸自動平衡＋製表／覆核／批核三簽名）、即時過賬、General Ledger、9 份自動報表（Trial Balance、P&L、Balance Sheet、AR/AP Aging、Purchase／Sales Report、Journal、Voucher Register）、CSV／Excel 匯出。
-- 當前版本：**桌面版 v3.21.3／Web 核心 v3.15.1**（badge 同時顯示兩個版本）。
+- 當前版本：**桌面版 v3.21.4／Web 核心 v3.15.1**（badge 同時顯示兩個版本）。
 - Repo：https://github.com/bwenpig/toy-legal-desktop（分支 `main`）
 - Web 版 repo（邏輯來源）：https://github.com/bwenpig/hk-legal-dora
 

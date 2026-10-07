@@ -347,10 +347,9 @@ async function startup(){
   try{ TG.setNativeDownload(nativeDownload); }
   catch(e){ console.error('[desktop] setNativeDownload failed:', e); }
 
-  // 工具欄 JSON 還原（app 原生 modal）完成後：如果之前因讀取失敗暫停咗自動儲存，
-  // 而家有數據喇，自動恢復並寫庫——唔使用戶手動撳「恢復自動儲存」。
-  // 注意：modal 係直接 import backup.ts 嘅 applyPreparedRestore，唔經 TG，所以唔可以 wrap TG，
-  // 改為攔截 #confirmRestore 最終確認掣。
+  // 工具欄 JSON 還原（app 原生 modal）完成後：無論 dbWriteEnabled 係咩狀態，
+  // 只要有數據就直接寫庫。唔依賴 debounced persist，確保一定寫入。
+  // 注意：modal 係直接 import backup.ts 嘅 applyPreparedRestore，唔經 TG，所以攔截掣。
   document.addEventListener('click', function(e){
     try{
       var t = e.target;
@@ -360,19 +359,27 @@ async function startup(){
       setTimeout(function(){
         (async function(){
           try{
-            if(dbWriteEnabled) return;  // 正常情況唔使做
             var payload = await TG.createBackupPayload();
             var d = payload && payload.data;
             if(d && d.accounts && d.accounts.length){
-              console.log('[desktop] 工具欄還原完成，自動恢復自動儲存');
-              dbWriteEnabled = true;
-              lastStableHash = null;
-              var rb = document.getElementById('tgResumeSave');
-              if(rb) rb.remove();
-              await persistNow();
-              await refreshTableList();
+              console.log('[desktop] 工具欄還原後直接寫庫…');
+              await DB.persistPayload(dbPort, payload);
+              lastStableHash = strHash(stablePayloadString(payload));
+              // 如果之前暫停咗自動儲存，而家恢復
+              if(!dbWriteEnabled){
+                dbWriteEnabled = true;
+                var rb = document.getElementById('tgResumeSave');
+                if(rb) rb.remove();
+              }
+              try{ await refreshTableList(); }catch(e2){}
+              console.log('[desktop] 工具欄還原寫庫完成');
+            }else{
+              console.log('[desktop] 工具欄還原後無數據，跳過寫庫');
             }
-          }catch(err){ console.error('[desktop] auto-resume after toolbar restore failed:', err); }
+          }catch(err){ 
+            console.error('[desktop] toolbar restore persist failed:', err);
+            try{ setStatus('還原後寫入數據庫失敗：' + (err.message || err)); }catch(e2){}
+          }
         })();
       }, 800);
     }catch(err){}
@@ -796,6 +803,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.21.4', '工具欄 JSON 還原後無論咩狀態都直接寫庫（唔再依賴 debounced persist）；寫庫失敗會顯示錯誤。'],
   ['3.21.3', '修復工具欄 JSON 還原後唔自動寫庫：改攔截確認掣（之前 wrap 錯函數）；設置匯入加空數據預警。'],
   ['3.21.2', '修復 voucher 簽名列第三格爆出容器：改用固定三欄 minmax(0,1fr)；修補手機版單欄被覆蓋問題。'],
   ['3.21.1', '修復設置界面深色模式睇唔到字：改用 app 本身嘅 --ink／--line／--surface-2 變量。'],
