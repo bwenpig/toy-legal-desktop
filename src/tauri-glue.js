@@ -803,6 +803,8 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.21.5', '匯入去重：accounts／vouchers／invoices 重複時保留最後一筆，唔再爆 UNIQUE 錯誤；side 缺失自動推斷。'],
+  ['3.21.5', '修復設置 JSON 匯入寫庫失敗：備份科目缺 side 時由類別自動推斷（資產/成本/費用=借方，其餘=貸方），唔再成個 transaction rollback 令表預覽全 0。'],
   ['3.21.4', '工具欄 JSON 還原後無論咩狀態都直接寫庫（唔再依賴 debounced persist）；寫庫失敗會顯示錯誤。'],
   ['3.21.3', '修復工具欄 JSON 還原後唔自動寫庫：改攔截確認掣（之前 wrap 錯函數）；設置匯入加空數據預警。'],
   ['3.21.2', '修復 voucher 簽名列第三格爆出容器：改用固定三欄 minmax(0,1fr)；修補手機版單欄被覆蓋問題。'],

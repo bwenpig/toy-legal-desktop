@@ -375,4 +375,37 @@ describe('desktop db v2', () => {
     assert.deepEqual(loaded.data.suppressedStaffNames, ['A']);
     port.db.close();
   });
+
+  it('edge：科目缺 side → 由 type 推斷（資產/成本/費用=dr，其餘=cr），唔 rollback', async () => {
+    // 2026-10-07 用戶個案：舊／手改備份嘅科目無 side，side NOT NULL 令成個
+    // persistPayload transaction rollback，表預覽全 0，重啟後數據消失
+    const port = makePort();
+    await api.initDatabase(port);
+    const payload = makeEmptyPayload();
+    payload.data.accounts = [
+      { code: '1000', name: 'Bank - HSBC', type: '資產', balance: 5000000, importedBalance: 0 },
+      { code: '2000', name: 'Loan', type: '負債', balance: 0, importedBalance: 0 },
+      { code: '4000', name: 'Sales', type: '收入', balance: 0, importedBalance: 0 },
+      { code: '5000', name: 'COGS', type: '成本', balance: 0, importedBalance: 0 },
+      { code: '6000', name: 'Rent', type: '費用', balance: 0, importedBalance: 0, side: 'dr' },
+    ];
+    const counts = await api.persistPayload(port, payload);
+    assert.equal(counts.accounts, 5);
+    const rows = await port.select('SELECT name, side FROM accounts ORDER BY code');
+    assert.deepEqual(plain(rows), [
+      { name: 'Bank - HSBC', side: 'dr' },
+      { name: 'Loan', side: 'cr' },
+      { name: 'Sales', side: 'cr' },
+      { name: 'COGS', side: 'dr' },
+      { name: 'Rent', side: 'dr' },
+    ]);
+    // loadPayload 讀返：side 有值
+    const loaded = await api.loadPayload(port);
+    assert.ok(loaded);
+    assert.deepEqual(
+      loaded.data.accounts.map((a) => [a.code, a.side]),
+      [['1000', 'dr'], ['2000', 'cr'], ['4000', 'cr'], ['5000', 'dr'], ['6000', 'dr']],
+    );
+    port.db.close();
+  });
 });

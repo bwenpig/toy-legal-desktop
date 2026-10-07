@@ -340,7 +340,15 @@ CREATE TABLE IF NOT EXISTS pending_vouchers (
       );
     }
     await countTable("fiscal_years");
+    const inferSide = (t) => {
+      return t === "\u8CC7\u7522" || t === "\u6210\u672C" || t === "\u8CBB\u7528" ? "dr" : "cr";
+    };
+    const accDedup = /* @__PURE__ */ new Map();
     for (const a of data.accounts ?? []) {
+      if (!a || a.name == null) continue;
+      accDedup.set(String(a.name), a);
+    }
+    for (const a of accDedup.values()) {
       await db.execute(
         `INSERT INTO accounts(code, name, type, side, balance_cents, imported_balance_cents,
         custom, original_name, edited, created_fiscal_key)
@@ -349,7 +357,7 @@ CREATE TABLE IF NOT EXISTS pending_vouchers (
           a.code,
           a.name,
           a.type,
-          a.side,
+          a.side || inferSide(a.type),
           a.balance,
           a.importedBalance,
           optBool(a.custom),
@@ -361,8 +369,13 @@ CREATE TABLE IF NOT EXISTS pending_vouchers (
     }
     await countTable("accounts");
     {
-      let seq = 0;
+      const vouDedup = /* @__PURE__ */ new Map();
       for (const v of data.vouchers ?? []) {
+        if (!v || v.no == null) continue;
+        vouDedup.set(String(v.no), v);
+      }
+      let seq = 0;
+      for (const v of vouDedup.values()) {
         await db.execute(
           `INSERT INTO vouchers(no, type, number_manual, date, description, allocation_invoice,
           made_by, checked_by, approved_by, fiscal_key, supporting_path, supporting_mime, seq)
@@ -407,8 +420,13 @@ CREATE TABLE IF NOT EXISTS pending_vouchers (
       await countTable("attachments");
     }
     const writeInvoices = async (kind, rows) => {
-      let seq = 0;
+      const dedup = /* @__PURE__ */ new Map();
       for (const r of rows ?? []) {
+        if (!r || r[1] == null) continue;
+        dedup.set(String(r[1]), r);
+      }
+      let seq = 0;
+      for (const r of dedup.values()) {
         await db.execute(
           `INSERT INTO invoices(kind, date, invoice_no, party, amount_cents, e4, e5, e6, seq)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,

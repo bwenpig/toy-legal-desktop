@@ -247,7 +247,17 @@ async function writeAllTables(db: DbPort, data: BackupData): Promise<TableCounts
   await countTable('fiscal_years');
 
   // ---- accounts ----
+  // side 缺失時由 type 推斷（資產/成本/費用=dr，其餘=cr）
+  const inferSide = (t: string): string => {
+    return (t === '資產' || t === '成本' || t === '費用') ? 'dr' : 'cr';
+  };
+  // accounts 去重：同一 name 只保留最後一次（UNIQUE 約束）
+  const accDedup = new Map<string, any>();
   for (const a of data.accounts ?? []) {
+    if (!a || a.name == null) continue;
+    accDedup.set(String(a.name), a);
+  }
+  for (const a of accDedup.values()) {
     await db.execute(
       `INSERT INTO accounts(code, name, type, side, balance_cents, imported_balance_cents,
         custom, original_name, edited, created_fiscal_key)
@@ -256,7 +266,7 @@ async function writeAllTables(db: DbPort, data: BackupData): Promise<TableCounts
         a.code,
         a.name,
         a.type,
-        a.side,
+        a.side || inferSide(a.type),
         a.balance,
         a.importedBalance,
         optBool(a.custom),
@@ -270,8 +280,14 @@ async function writeAllTables(db: DbPort, data: BackupData): Promise<TableCounts
 
   // ---- vouchers + lines + attachments ----
   {
-    let seq = 0;
+    // vouchers 去重：同一 no 只保留最後一次（PRIMARY KEY 約束）
+    const vouDedup = new Map<string, any>();
     for (const v of data.vouchers ?? []) {
+      if (!v || v.no == null) continue;
+      vouDedup.set(String(v.no), v);
+    }
+    let seq = 0;
+    for (const v of vouDedup.values()) {
       await db.execute(
         `INSERT INTO vouchers(no, type, number_manual, date, description, allocation_invoice,
           made_by, checked_by, approved_by, fiscal_key, supporting_path, supporting_mime, seq)
@@ -318,8 +334,14 @@ async function writeAllTables(db: DbPort, data: BackupData): Promise<TableCounts
 
   // ---- invoices（sales / purchase） ----
   const writeInvoices = async (kind: 'sales' | 'purchase', rows: InvoiceRow[] | undefined): Promise<void> => {
-    let seq = 0;
+    // 去重：同一 (kind, invoice_no) 只保留最後一次出現（用戶數據可能有重複）
+    const dedup = new Map<string, InvoiceRow>();
     for (const r of rows ?? []) {
+      if (!r || r[1] == null) continue;
+      dedup.set(String(r[1]), r);
+    }
+    let seq = 0;
+    for (const r of dedup.values()) {
       await db.execute(
         `INSERT INTO invoices(kind, date, invoice_no, party, amount_cents, e4, e5, e6, seq)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
