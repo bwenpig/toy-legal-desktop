@@ -348,24 +348,35 @@ async function startup(){
   catch(e){ console.error('[desktop] setNativeDownload failed:', e); }
 
   // 工具欄 JSON 還原（app 原生 modal）完成後：如果之前因讀取失敗暫停咗自動儲存，
-  // 而家有數據喇，自動恢復並寫庫——唔使用戶手動撳「恢復自動儲存」
-  try{
-    var _origApplyRestore = TG.applyPreparedRestore;
-    TG.applyPreparedRestore = function(data){
-      var r = _origApplyRestore(data);
-      try{
-        if(!dbWriteEnabled && data && data.accounts && data.accounts.length){
-          console.log('[desktop] 工具欄還原完成，自動恢復自動儲存');
-          dbWriteEnabled = true;
-          lastStableHash = null;
-          var rb = document.getElementById('tgResumeSave');
-          if(rb) rb.remove();
-          setTimeout(function(){ persistNow(); }, 600);
-        }
-      }catch(e){ console.error('[desktop] auto-resume persist failed:', e); }
-      return r;
-    };
-  }catch(e){ console.error('[desktop] wrap applyPreparedRestore failed:', e); }
+  // 而家有數據喇，自動恢復並寫庫——唔使用戶手動撳「恢復自動儲存」。
+  // 注意：modal 係直接 import backup.ts 嘅 applyPreparedRestore，唔經 TG，所以唔可以 wrap TG，
+  // 改為攔截 #confirmRestore 最終確認掣。
+  document.addEventListener('click', function(e){
+    try{
+      var t = e.target;
+      if(!t || t.id !== 'confirmRestore') return;
+      // 兩步確認：第一步係「繼續」，第二步先係「確認還原」
+      if(t.textContent.indexOf('確認還原') < 0) return;
+      setTimeout(function(){
+        (async function(){
+          try{
+            if(dbWriteEnabled) return;  // 正常情況唔使做
+            var payload = await TG.createBackupPayload();
+            var d = payload && payload.data;
+            if(d && d.accounts && d.accounts.length){
+              console.log('[desktop] 工具欄還原完成，自動恢復自動儲存');
+              dbWriteEnabled = true;
+              lastStableHash = null;
+              var rb = document.getElementById('tgResumeSave');
+              if(rb) rb.remove();
+              await persistNow();
+              await refreshTableList();
+            }
+          }catch(err){ console.error('[desktop] auto-resume after toolbar restore failed:', err); }
+        })();
+      }, 800);
+    }catch(err){}
+  }, true);
 
   // 任何用戶互動 → debounced persist（唔靠 app 內部 hook，唔會漏）
   ['click', 'change', 'input', 'submit'].forEach(function(ev){
@@ -785,6 +796,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.21.3', '修復工具欄 JSON 還原後唔自動寫庫：改攔截確認掣（之前 wrap 錯函數）；設置匯入加空數據預警。'],
   ['3.21.2', '修復 voucher 簽名列第三格爆出容器：改用固定三欄 minmax(0,1fr)；修補手機版單欄被覆蓋問題。'],
   ['3.21.1', '修復設置界面深色模式睇唔到字：改用 app 本身嘅 --ink／--line／--surface-2 變量。'],
   ['3.21.0', 'MCP 加 voucher 錄入：create_voucher（驗證借貸平衡／科目存在後排入待匯入）＋設置「待匯入 Voucher」一鍵匯入；手寫單相片經 Codex 識別流程見 mcp-server/VOUCHER_ENTRY.md。'],
@@ -1335,7 +1347,11 @@ async function onPickImportJson(){
     var d = res.prepared;
     pendingImport = { payload: payload, prepared: d, legacyConverted: res.legacyConverted,
       fileName: p.split('/').pop() };
+    var emptyWarn = (!d.accounts || !d.accounts.length)
+      ? '<div class="modal-warning">⚠️ 呢個備份檔入面冇科目數據（0 個科目）。匯入後數據庫會係空，請確認揀啱檔案。</div>'
+      : '';
     var html = '<p>已讀取 <strong>' + escHtml(pendingImport.fileName) + '</strong>，請核對：</p>' +
+      emptyWarn +
       '<div class="restore-summary">' +
       '<span>備份版本 <b>v' + escHtml(payload.appVersion || '未知') + '</b>（schema v' + escHtml(payload.schemaVersion) + '）</span>' +
       '<span>匯出時間 <b>' + escHtml(payload.exportedAt || '未提供') + '</b></span>' +

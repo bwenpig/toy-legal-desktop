@@ -4,7 +4,7 @@
  *
  * headless Chromium 載入實際 src/index.html，mock __TAURI_INTERNALS__.invoke
  * 接真 SQLite 檔（node:sqlite），驗證：
- *  - badge v3.21.2 / __TG__.desktopVersion / __TG_DB__ 存在
+ *  - badge v3.21.3 / __TG__.desktopVersion / __TG_DB__ 存在
  *  - 啟動：全新 DB → 空白賬套
  *  - importExcelData 匯入科目 → UI 入銷貨 voucher
  *  - 關聯表有數（vouchers / voucher_lines，金額係整數分）
@@ -181,10 +181,10 @@ function makeV1Sample(){
   // T1 badge（桌面版＋核心兩個版本；Web 核心版本喺 S2 驗）
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('T1 badge 顯示 v3.21.2＋核心 v3.15.1', badge === 'v3.21.2核心 v3.15.1', String(badge));
+  check('T1 badge 顯示 v3.21.3＋核心 v3.15.1', badge === 'v3.21.3核心 v3.15.1', String(badge));
   // T2 bridge
   const tgVer = await page.evaluate(() => window.__TG__ && window.__TG__.desktopVersion);
-  check('T2 __TG__.desktopVersion = 3.21.2', tgVer === "3.21.2", String(tgVer));
+  check('T2 __TG__.desktopVersion = 3.21.3', tgVer === "3.21.3", String(tgVer));
   const hasDb = await page.evaluate(() => !!window.__TG_DB__);
   check('T3 __TG_DB__ 存在', hasDb);
   // T4 啟動狀態（全新 DB → 空白賬套）
@@ -336,7 +336,7 @@ function makeV1Sample(){
   check('S1 設置畫面開啟＋隱藏 app', setVisible && appHidden);
   const setVer = await page.evaluate(() => document.querySelector('.tgset-ver').textContent);
   check('S2 版本：桌面版 3.21.1＋Web核心 v3.15.1',
-    /3\.21\.2/.test(setVer) && /v3\.15\.1/.test(setVer),
+    /3\.21\.3/.test(setVer) && /v3\.15\.1/.test(setVer),
     setVer.trim().replace(/\s+/g, ' ').slice(0, 70));
   // S3/S4 表預覽
   await sleep(800);
@@ -705,11 +705,22 @@ function makeV1Sample(){
     check('X4f 無浮點垃圾', !badFloat);
   }
 
-  // R1 工具欄還原 wrapper 已安裝（唔直接調用，空數據會觸發 createNewVoucher）
+  // R1 工具欄還原 auto-resume：模擬 #confirmRestore 最終確認掣點擊，唔應報錯
+  //（dbWriteEnabled=true 時應直接返回，唔做嘢）
   var r1ok = await page.evaluate(() => {
-    return (typeof window.__TG__.applyPreparedRestore === 'function') ? 'ok' : 'no-fn';
+    try{
+      var btn = document.createElement('button');
+      btn.id = 'confirmRestore';
+      btn.textContent = '確認還原';
+      document.body.appendChild(btn);
+      btn.click();
+      btn.remove();
+      return 'ok';
+    }catch(e){ return 'throw:' + e.message; }
   });
-  check('R1 applyPreparedRestore wrapper 已安裝', r1ok === 'ok', r1ok);
+  // 等 1 秒，睇下有冇 pageerror（handler 入面有 async，要時間跑）
+  await new Promise(r => setTimeout(r, 1000));
+  check('R1 #confirmRestore 攔截唔報錯', r1ok === 'ok', r1ok);
 
   // T15 零 pageerror（放最後，覆蓋埋設置測試）
   check('T15 零 pageerror', errs.length === 0, errs.slice(0, 3).join(' | ').slice(0, 200));
