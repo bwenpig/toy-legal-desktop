@@ -347,6 +347,26 @@ async function startup(){
   try{ TG.setNativeDownload(nativeDownload); }
   catch(e){ console.error('[desktop] setNativeDownload failed:', e); }
 
+  // 工具欄 JSON 還原（app 原生 modal）完成後：如果之前因讀取失敗暫停咗自動儲存，
+  // 而家有數據喇，自動恢復並寫庫——唔使用戶手動撳「恢復自動儲存」
+  try{
+    var _origApplyRestore = TG.applyPreparedRestore;
+    TG.applyPreparedRestore = function(data){
+      var r = _origApplyRestore(data);
+      try{
+        if(!dbWriteEnabled && data && data.accounts && data.accounts.length){
+          console.log('[desktop] 工具欄還原完成，自動恢復自動儲存');
+          dbWriteEnabled = true;
+          lastStableHash = null;
+          var rb = document.getElementById('tgResumeSave');
+          if(rb) rb.remove();
+          setTimeout(function(){ persistNow(); }, 600);
+        }
+      }catch(e){ console.error('[desktop] auto-resume persist failed:', e); }
+      return r;
+    };
+  }catch(e){ console.error('[desktop] wrap applyPreparedRestore failed:', e); }
+
   // 任何用戶互動 → debounced persist（唔靠 app 內部 hook，唔會漏）
   ['click', 'change', 'input', 'submit'].forEach(function(ev){
     document.addEventListener(ev, function(){ schedulePersist(); }, { capture: true, passive: true });
@@ -765,6 +785,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.21.2', '修復 voucher 簽名列第三格爆出容器：改用固定三欄 minmax(0,1fr)；修補手機版單欄被覆蓋問題。'],
   ['3.21.1', '修復設置界面深色模式睇唔到字：改用 app 本身嘅 --ink／--line／--surface-2 變量。'],
   ['3.21.0', 'MCP 加 voucher 錄入：create_voucher（驗證借貸平衡／科目存在後排入待匯入）＋設置「待匯入 Voucher」一鍵匯入；手寫單相片經 Codex 識別流程見 mcp-server/VOUCHER_ENTRY.md。'],
   ['3.20.0', '設置新增「附件管理」（統計／列表／異常檢查／匯出全部／刪除舊備份）同「MCP 服務」（一鍵複製 Codex 接入設定）。'],
@@ -1347,6 +1368,7 @@ async function doImportJson(){
   setSettingsStatus('正在匯入（先備份目前數據庫）…');
   dbWriteEnabled = false;
   clearTimeout(persistTimer);
+  var ok = false, failMsg = '';
   try{
     await backupDbFile('pre-settings-import');
     var normalized = {
@@ -1358,18 +1380,26 @@ async function doImportJson(){
     };
     await extractAttachments(normalized);
     var counts = await DB.persistPayload(dbPort, normalized);
-    console.log('[desktop] settings import 完成：', JSON.stringify(counts));
+    console.log('[desktop] settings import 寫庫：', JSON.stringify(counts));
     await loadAppStateFromDb({ isFresh: false, needsMigration: false, needsBlobMigration: false, version: 3 }, false);
-    dbWriteEnabled = true;
-    lastStableHash = null;
-    await persistNow();
+    // 驗證：讀返確認真係寫入咗
+    var verify = await DB.loadPayload(dbPort);
+    var vCount = verify && verify.data ? verify.data.vouchers.length : 0;
+    var aCount = verify && verify.data ? verify.data.accounts.length : 0;
+    console.log('[desktop] settings import 驗證讀回：vouchers=' + vCount + ', accounts=' + aCount);
+    if(!aCount) throw new Error('寫入後讀回科目為 0，匯入未生效');
+    ok = true;
     await refreshTableList();
-    setSettingsStatus('匯入完成：' + imp.prepared.vouchers.length + ' 張 voucher，' +
-      imp.prepared.accounts.length + ' 個科目。舊數據庫已備份。');
+    var dbp = await currentDbFilePath();
+    setSettingsStatus('匯入完成：' + vCount + ' 張 voucher，' + aCount + ' 個科目，已寫入：' + dbp + '。舊數據庫已備份。');
   }catch(e){
     console.error('[desktop] settings import 失敗：', e);
+    failMsg = (e.message || e);
+    setSettingsStatus('匯入失敗：' + failMsg + '（目前數據庫已備份，未被覆蓋）');
+  }finally{
     dbWriteEnabled = true;
-    setSettingsStatus('匯入失敗：' + (e.message || e) + '（目前數據庫已備份，未被覆蓋）');
+    lastStableHash = null;
+    if(ok){ try{ await persistNow(); }catch(e){} }
   }
 }
 
