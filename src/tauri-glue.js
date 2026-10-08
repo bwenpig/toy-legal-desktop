@@ -870,6 +870,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.23.0', 'Voucher Excel 匯入改為資料夾模式：揀一個資料夾（內含 Excel＋附件），M 欄填附件檔名，系統自動喺資料夾內搵檔匯入。'],
   ['3.22.1', '修復兩個 v3.22.0 問題：(1) 匯入流程靜默丟數據——debounced 寫庫同匯入嘅直接寫庫重疊，第二次 transaction 失敗但 UI 照報成功，寫庫而家排隊執行唔再重疊；(2) voucher 列表 📎 按鈕實際無顯示——舊實現 wrap 咗無人呼叫嘅橋接函數，改用 MutationObserver，任何重繪（入賬／匯入／還原／搜尋）後自動補上按鈕。'],
   ['3.22.0', 'Voucher Excel 匯入支援附件：第 13 欄填檔案路徑（; 分隔），匯入自動讀檔入庫；voucher 列表加 📎 附件按鈕。'],
   ['3.21.5', '匯入去重：accounts／vouchers／invoices 重複時保留最後一筆，唔再爆 UNIQUE 錯誤；side 缺失自動推斷。'],
@@ -965,8 +966,8 @@ function injectSettingsView(){
     '<div id="tgImportSummary" hidden></div></section>' +
     '<section class="tgset-sec"><h3>Excel — Voucher 批量匯入</h3>' +
     '<p><button class="btn" id="tgVoucherTpl" type="button">下載 Voucher 匯入範本</button> ' +
-    '<button class="btn" id="tgVoucherImport" type="button">匯入 Voucher Excel…</button></p>' +
-    '<p class="muted small">範本每行一條分錄行；B 欄 Voucher No. 吉唔填會自動編號（B040124 格式）。匯入前逐行驗證，可揀「只匯入有效行」。金額經整數分入賬。</p>' +
+    '<button class="btn" id="tgVoucherImport" type="button">從資料夾匯入 Voucher…</button></p>' +
+    '<p class="muted small">將 Excel 範本＋附件放喺同一個資料夾，M 欄填附件檔名（多個用 ; 分隔）。撳上面個掣揀資料夾，系統會自動搵 Excel 讀取，並按檔名喺資料夾內搵附件匯入。</p>' +
     '<div id="tgVoucherImportBox" hidden></div></section>' +
     '<section class="tgset-sec"><h3>附件管理 <span class="muted small">（v3.18 起附件存入 SQLite）</span></h3>' +
     '<p><button class="btn" id="tgAttRefresh" type="button">重新整理</button> ' +
@@ -1500,7 +1501,7 @@ async function doImportJson(){
 
 /* ---------- 9f. Voucher Excel 批量匯入（設置畫面） ---------- */
 var pendingVoucherImport = null; // ParsedVoucherImport
-var pendingVoucherExcelPath = null; // Excel 檔路徑（附件相對路徑基準）
+var pendingVoucherExcelPath = null; // 匯入資料夾路徑（v3.23.0 起改為資料夾模式）
 function fmtCentsPlain(c){
   var n = Math.trunc(Number(c) || 0), neg = n < 0, abs = Math.abs(n);
   return (neg ? '-' : '') + Math.floor(abs / 100) + '.' + String(abs % 100).padStart(2, '0');
@@ -1529,12 +1530,34 @@ async function downloadVoucherTemplate(){
 async function onImportVoucherExcel(){
   var box = document.getElementById('tgVoucherImportBox');
   box.hidden = true; box.innerHTML = ''; pendingVoucherImport = null;
-  var p = await dlgOpen({ title: '選擇 Voucher Excel 檔',
-    filters: [{ name: 'Excel', extensions: ['xlsx', 'xls'] }], multiple: false });
-  if(!p) return;
-  if(Array.isArray(p)) p = p[0];
-  p = String(p);
-  pendingVoucherExcelPath = p; // 記住 Excel 路徑，供附件相對路徑解析
+  // v3.23.0：改為揀資料夾（Excel＋附件放同一個資料夾）
+  var folder = await dlgOpen({ title: '選擇匯入資料夾（內含 Excel＋附件）', directory: true, multiple: false });
+  if(!folder) return;
+  if(Array.isArray(folder)) folder = folder[0];
+  folder = String(folder);
+  setSettingsStatus('正在掃描資料夾…');
+  var xlsxFiles = [];
+  try{
+    var entries = await invoke('plugin:fs|read_dir', { path: folder });
+    for(var i = 0; i < entries.length; i++){
+      var e = entries[i];
+      var nm = e.name || '';
+      if(!e.isDirectory && /\.(xlsx|xls)$/i.test(nm)) xlsxFiles.push(folder + '/' + nm);
+    }
+  }catch(e){
+    setSettingsStatus('讀取資料夾失敗：' + (e.message || e));
+    return;
+  }
+  if(!xlsxFiles.length){
+    setSettingsStatus('資料夾內冇 Excel 檔（.xlsx／.xls）。');
+    return;
+  }
+  var p = xlsxFiles[0];
+  if(xlsxFiles.length > 1){
+    // 多個 Excel：用第一個，並提示
+    setSettingsStatus('資料夾內有多個 Excel，用第一個：' + p.split('/').pop());
+  }
+  pendingVoucherExcelPath = folder; // 記住資料夾路徑，附件喺呢度搵
   setSettingsStatus('正在讀取 Excel…');
   try{
     var wb = XLSX.read(await fsReadBytes(p), { type: 'array' });
@@ -1545,7 +1568,8 @@ async function onImportVoucherExcel(){
     renderVoucherImportPreview(box, parsed);
     box.hidden = false;
     setSettingsStatus('已解析：' + parsed.drafts.length + ' 張 voucher 草稿，' +
-      parsed.validDrafts.length + ' 張有效，' + parsed.errors.length + ' 個錯誤。');
+      parsed.validDrafts.length + ' 張有效，' + parsed.errors.length + ' 個錯誤。' +
+      '附件將喺資料夾內搵：' + folder);
   }catch(e){
     setSettingsStatus('讀取失敗：' + (e.message || e));
   }
@@ -1598,9 +1622,10 @@ async function doImportVouchers(){
     await backupDbFile('pre-voucher-excel-import');
     var res = TG.importVouchers(parsed.validDrafts);
     // 附件：按 draft 嘅 attachmentPaths 讀檔，經 setVoucherAttachments 掛到 voucher
+    // v3.23.0：excelPath 而家係資料夾路徑（唔再係 Excel 檔路徑）
     var attOk = 0, attFail = [];
     if(excelPath && TG.setVoucherAttachments){
-      var excelDir = String(excelPath).replace(/[/\\][^/\\]*$/, '');
+      var attachDir = String(excelPath);
       for(var vi = 0; vi < res.voucherNos.length && vi < parsed.validDrafts.length; vi++){
         var vno = res.voucherNos[vi];
         var draft = parsed.validDrafts[vi];
@@ -1608,15 +1633,16 @@ async function doImportVouchers(){
         var atts = [];
         for(var pi = 0; pi < draft.attachmentPaths.length; pi++){
           var rel = draft.attachmentPaths[pi];
+          // 絕對路徑直接用；否則喺匯入資料夾內搵
           var full = (/^([a-zA-Z]:)?[/\\]/.test(rel) || rel.charAt(0) === '/')
-            ? rel : (excelDir + '/' + rel);
+            ? rel : (attachDir + '/' + rel);
           try{
             var bytes = await fsReadBytes(full);
             var name = full.split('/').pop().split('\\').pop();
             atts.push({ name: name, mime: guessMime(name), dataURL: bytesToDataURL(bytes, guessMime(name)) });
             attOk++;
           }catch(e){
-            attFail.push(vno + ': ' + rel);
+            attFail.push(vno + ': ' + rel + '（資料夾內搵唔到）');
           }
         }
         if(atts.length){

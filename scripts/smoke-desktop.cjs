@@ -81,6 +81,10 @@ async function mockInvoke(cmd, a, options) {
   if (cmd === 'plugin:dialog|open') return mockDialogOpenQueue.length ? mockDialogOpenQueue.shift() : null;
   if (cmd === 'plugin:fs|mkdir') { fs.mkdirSync(a.path, { recursive: true }); return; }
   if (cmd === 'plugin:fs|exists') return fs.existsSync(a.path);
+  if (cmd === 'plugin:fs|read_dir') {
+    const entries = fs.readdirSync(a.path, { withFileTypes: true });
+    return entries.map(e => ({ name: e.name, isDirectory: e.isDirectory(), isFile: e.isFile(), isSymlink: e.isSymbolicLink() }));
+  }
   if (cmd === 'plugin:fs|write_file') {
     // glue 調用：invoke('plugin:fs|write_file', data, {headers:{path:encodeURIComponent(path)}})
     // 注意：page.exposeFunction 會把 Uint8Array 序列化成 {0:..,1:..} plain object，要還原
@@ -181,10 +185,10 @@ function makeV1Sample(){
   // T1 badge（桌面版＋核心兩個版本；Web 核心版本喺 S2 驗）
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('T1 badge 顯示 v3.22.1＋核心 v3.15.1', badge === 'v3.22.1核心 v3.15.1', String(badge));
+  check('T1 badge 顯示 v3.23.0＋核心 v3.15.1', badge === 'v3.23.0核心 v3.15.1', String(badge));
   // T2 bridge
   const tgVer = await page.evaluate(() => window.__TG__ && window.__TG__.desktopVersion);
-  check('T2 __TG__.desktopVersion = 3.22.1', tgVer === "3.22.1", String(tgVer));
+  check('T2 __TG__.desktopVersion = 3.23.0', tgVer === "3.23.0", String(tgVer));
   const hasDb = await page.evaluate(() => !!window.__TG_DB__);
   check('T3 __TG_DB__ 存在', hasDb);
   // T4 啟動狀態（全新 DB → 空白賬套）
@@ -335,8 +339,8 @@ function makeV1Sample(){
   const appHidden = await page.evaluate(() => document.getElementById('appShell').style.display === 'none');
   check('S1 設置畫面開啟＋隱藏 app', setVisible && appHidden);
   const setVer = await page.evaluate(() => document.querySelector('.tgset-ver').textContent);
-  check('S2 版本：桌面版 3.22.1＋Web核心 v3.15.1',
-    /3\.22\.1/.test(setVer) && /v3\.15\.1/.test(setVer),
+  check('S2 版本：桌面版 3.23.0＋Web核心 v3.15.1',
+    /3\.23\.0/.test(setVer) && /v3\.15\.1/.test(setVer),
     setVer.trim().replace(/\s+/g, ' ').slice(0, 70));
   // S3/S4 表預覽
   await sleep(800);
@@ -483,8 +487,10 @@ function makeV1Sample(){
   }
   check('X1 範本下載（說明＋範本）', tplOk && tplSheets.includes('說明'), tplSheets.join(','));
 
-  // X2 匯入：3 張草稿（2 有效＋1 借貸不平）
-  const impXlsxPath = path.join(WORK, 'voucher-import-test.xlsx');
+  // X2 匯入：3 張草稿（2 有效＋1 借貸不平）— v3.23.0 起用資料夾模式
+  const impFolder = path.join(WORK, 'voucher-import-folder');
+  fs.mkdirSync(impFolder, { recursive: true });
+  const impXlsxPath = path.join(impFolder, 'voucher-import-test.xlsx');
   {
     const iwb = XLSX.utils.book_new();
     const iws = XLSX.utils.aoa_to_sheet([
@@ -499,7 +505,7 @@ function makeV1Sample(){
     XLSX.utils.book_append_sheet(iwb, iws, '範本');
     XLSX.writeFile(iwb, impXlsxPath);
   }
-  mockDialogOpenQueue.push(impXlsxPath);
+  mockDialogOpenQueue.push(impFolder);
   await page.evaluate(() => document.getElementById('tgVoucherImport').click());
   await sleep(1500);
   const impPreview = await page.evaluate(() => ({

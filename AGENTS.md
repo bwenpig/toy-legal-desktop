@@ -7,7 +7,7 @@
 - 香港 **Toys Gallery International Limited** 會計系統嘅桌面版。
 - **Tauri 2 + SQLite**（`@tauri-apps/plugin-sql`），本地單機運行，無後端 server。
 - 功能同 web 版完全一樣：Voucher 入賬（借貸自動平衡＋製表／覆核／批核三簽名）、即時過賬、General Ledger、9 份自動報表（Trial Balance、P&L、Balance Sheet、AR/AP Aging、Purchase／Sales Report、Journal、Voucher Register）、CSV／Excel 匯出。
-- 當前版本：**桌面版 v3.22.0／Web 核心 v3.15.1**（badge 同時顯示兩個版本）。
+- 當前版本：**桌面版 v3.23.0／Web 核心 v3.15.1**（badge 同時顯示兩個版本）。
 - Repo：https://github.com/bwenpig/toy-legal-desktop（分支 `main`）
 - Web 版 repo（邏輯來源）：https://github.com/bwenpig/hk-legal-dora
 
@@ -111,4 +111,5 @@ node scripts/smoke-desktop.cjs
 - v3.21.1：修復設置深色模式文字唔可見（改用 --ink／--line 變量）。
 - v3.21.2：修復 voucher 簽名列第三格爆出容器（改固定三欄 minmax(0,1fr)；手機版單欄覆蓋一併修）。
 - v3.22.0：Voucher Excel 匯入支援附件（範本第 13 欄檔案路徑；匯入自動讀檔入庫）；voucher 列表 📎 附件檢視。
+- v3.23.0：Voucher Excel 匯入改為資料夾模式——揀一個資料夾（內含 Excel＋附件），M 欄填附件檔名（; 分隔），系統自動喺資料夾內搵檔匯入；smoke 更新支援 read_dir mock。
 - v3.22.1：修兩個 v3.22.0 問題——(1) persist 加互斥排隊（debounced 寫庫曾同匯入寫庫重疊致靜默丟數據）；(2) voucher 列表 📎 改用 MutationObserver 補按鈕（舊 wrap 包咗無人呼叫嘅橋接函數）。專項驗收 scripts/accept-v322-attachments.cjs（14 項）＋ smoke 65/65。
