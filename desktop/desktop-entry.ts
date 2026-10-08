@@ -230,6 +230,7 @@ export interface DesktopBridge {
   renderVoucherList: typeof renderVoucherList;
   attachmentButtonHTML: typeof attachmentButtonHTML;
   bindAttachmentButtons: typeof bindAttachmentButtons;
+  getAccountNames: () => string[];
   openAttachmentList: typeof openAttachmentList;
   nextVoucherNumberFor: typeof nextVoucherNumberFor;
   /** 待匯入 voucher（MCP）匯入後補附件 */
@@ -245,7 +246,7 @@ export interface DesktopBridge {
 
 /** 桌面版 bridge（tauri-glue.js 經呢度攞 app 功能）。 */
 const bridge: DesktopBridge = {
-  desktopVersion: '3.23.0',
+  desktopVersion: '3.24.0',
   createBackupPayload,
   validateBackup,
   prepareRestore,
@@ -270,6 +271,7 @@ const bridge: DesktopBridge = {
   attachmentButtonHTML,
   bindAttachmentButtons,
   openAttachmentList,
+  getAccountNames: () => store.accounts.map((a) => a.name),
   setVoucherAttachments: (no, atts) => {
     const v = store.vouchers.find((x) => x.no === no);
     if (!v) return false;

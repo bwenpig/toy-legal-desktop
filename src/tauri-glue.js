@@ -576,6 +576,13 @@ function injectDesktopUI(){
 
   var bar = document.querySelector('.backup-tools');
   if(!bar || document.getElementById('tgDesktopTools')) return;
+  // v3.24.0：隱藏 web 原生備份按鈕（下載備份／複製備份／還原備份），桌面版改用 SQLite
+  ['backupData', 'copyBackupData', 'restoreData'].forEach(function(id){
+    var b = document.getElementById(id);
+    if(b) b.style.display = 'none';
+  });
+  var restoreFile = document.getElementById('restoreFile');
+  if(restoreFile) restoreFile.style.display = 'none';
   var wrap = document.createElement('span');
   wrap.id = 'tgDesktopTools';
   wrap.style.cssText = 'display:inline-flex;gap:6px;margin-left:6px;flex-wrap:wrap;';
@@ -586,10 +593,12 @@ function injectDesktopUI(){
     b.addEventListener('click', fn);
     return b;
   }
-  wrap.appendChild(mk('tgImportJSON', '匯入 JSON 備份', '從 web 版下載的 JSON 備份匯入（首次遷移用）', importJSONBackup));
+  // v3.24.0：工具欄只保留 Excel 相關；移除「匯入 JSON 備份」
   wrap.appendChild(mk('tgExportExcel', '匯出 Excel 報表', '9 份報表匯出為 .xlsx', exportExcelReports));
-  wrap.appendChild(mk('tgDownloadTemplate', '下載匯入範本', '下載 Excel 匯入範本（科目表＋期初數）', downloadImportTemplate));
-  wrap.appendChild(mk('tgImportExcel', '匯入 Excel', '從 Excel 匯入科目表＋期初數', importExcelData));
+  wrap.appendChild(mk('tgVoucherTpl', '下載 Voucher 範本', '下載 Voucher 批量匯入範本（含科目下拉選單）', downloadVoucherTemplate));
+  wrap.appendChild(mk('tgVoucherImportTb', '匯入 Voucher', '從資料夾匯入 Voucher Excel＋附件', function(){ onImportVoucherExcel(true); }));
+  wrap.appendChild(mk('tgDownloadTemplate', '下載科目範本', '下載 Excel 匯入範本（科目表＋期初數）', downloadImportTemplate));
+  wrap.appendChild(mk('tgImportExcel', '匯入科目 Excel', '從 Excel 匯入科目表＋期初數', importExcelData));
   var ver = document.createElement('span');
   ver.style.cssText = 'font-size:11px;color:#999;align-self:center;margin-left:4px;';
   ver.textContent = '桌面版 v' + TG.desktopVersion;
@@ -870,6 +879,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.24.0', '工具欄精簡：移除下載／複製／還原備份＋匯入 JSON；新增下載 Voucher 範本（含科目下拉選單）＋從資料夾匯入 Voucher；科目範本保留。'],
   ['3.23.0', 'Voucher Excel 匯入改為資料夾模式：揀一個資料夾（內含 Excel＋附件），M 欄填附件檔名，系統自動喺資料夾內搵檔匯入。'],
   ['3.22.1', '修復兩個 v3.22.0 問題：(1) 匯入流程靜默丟數據——debounced 寫庫同匯入嘅直接寫庫重疊，第二次 transaction 失敗但 UI 照報成功，寫庫而家排隊執行唔再重疊；(2) voucher 列表 📎 按鈕實際無顯示——舊實現 wrap 咗無人呼叫嘅橋接函數，改用 MutationObserver，任何重繪（入賬／匯入／還原／搜尋）後自動補上按鈕。'],
   ['3.22.0', 'Voucher Excel 匯入支援附件：第 13 欄填檔案路徑（; 分隔），匯入自動讀檔入庫；voucher 列表加 📎 附件按鈕。'],
@@ -1518,16 +1528,70 @@ async function downloadVoucherTemplate(){
     var tplRange = XLSX.utils.decode_range(wsTpl['!ref']);
     wsTpl['!autofilter'] = { ref: XLSX.utils.encode_range({r:0,c:0},{r:tplRange.e.r,c:12}) };
     XLSX.utils.book_append_sheet(wb, wsTpl, '範本');
+    // v3.24.0：科目清單 sheet（動態由系統科目生成）＋借／貸方欄下拉選單
+    var accNames = [];
+    try{ accNames = TG.getAccountNames ? TG.getAccountNames() : []; }catch(e){}
+    if(accNames.length){
+      var wsAcc = XLSX.utils.aoa_to_sheet([['科目名稱（下拉選單用，請勿刪除此表）']].concat(accNames.map(function(n){ return [n]; })));
+      wsAcc['!cols'] = [{ wch: 42 }];
+      XLSX.utils.book_append_sheet(wb, wsAcc, '科目清單');
+    }
     var out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    // 注入 data validation（借方 E 欄＋貸方 G 欄下拉）
+    if(accNames.length && window.JSZip){
+      try{
+        out = await injectAccountDropdown(new Uint8Array(out), accNames.length);
+      }catch(e){ console.error('[desktop] 下拉注入失敗：', e); }
+    }
     var path = await dlgSave({ title: '下載 Voucher 匯入範本',
       defaultPath: 'Toys-Gallery-voucher-import-template.xlsx',
       filters: [{ name: 'Excel 活頁簿', extensions: ['xlsx'] }] });
     if(!path){ setSettingsStatus('已取消下載'); return; }
     await fsWriteBytes(path, new Uint8Array(out));
-    setSettingsStatus('範本已下載。填好後用「匯入 Voucher Excel」匯入（記得刪除示例行）。');
+    setSettingsStatus('範本已下載（借／貸方科目有下拉選單）。將範本＋附件放喺同一個資料夾，填好後用「從資料夾匯入 Voucher…」匯入（記得刪除示例行）。');
   }catch(e){ setSettingsStatus('下載失敗：' + (e.message || e)); }
 }
-async function onImportVoucherExcel(){
+/* 注入科目下拉選單：喺「範本」表嘅 E／G 欄加 list validation，參照「科目清單」表 */
+async function injectAccountDropdown(xlsxBytes, accCount){
+  var zip = await window.JSZip.loadAsync(xlsxBytes);
+  var workbookXml = await zip.file('xl/workbook.xml').async('string');
+  var relsXml = await zip.file('xl/_rels/workbook.xml.rels').async('string');
+  // sheet 名 → 檔名
+  var fileMap = {};
+  var sheetRe = /<sheet[^>]*name="([^"]+)"[^>]*r:id="([^"]+)"/g, m;
+  var relMap = {};
+  var relRe = /<Relationship[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"/g;
+  while((m = relRe.exec(relsXml))) relMap[m[1]] = m[2];
+  while((m = sheetRe.exec(workbookXml))){
+    var nm = m[1].replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+    var tgt = relMap[m[2]] || '';
+    fileMap[nm] = 'xl/' + tgt.replace(/^\//, '');
+  }
+  var tplFile = fileMap['範本'];
+  if(!tplFile || !zip.file(tplFile)) return xlsxBytes;
+  var sheetXml = await zip.file(tplFile).async('string');
+  // 科目清單 A2:A{1+accCount}
+  var lastRow = 1 + accCount;
+  var ref = "'科目清單'!$A$2:$A$" + lastRow;
+  var dv = '<dataValidations count="2">' +
+    '<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="E2:E5000"><formula1>' + ref + '</formula1></dataValidation>' +
+    '<dataValidation type="list" allowBlank="1" showInputMessage="1" showErrorMessage="1" sqref="G2:G5000"><formula1>' + ref + '</formula1></dataValidation>' +
+    '</dataValidations>';
+  // 插入喺 </worksheet> 之前（dataValidations 應喺 pageMargins 之後、但放尾都work）
+  if(sheetXml.indexOf('<dataValidations') < 0){
+    sheetXml = sheetXml.replace('</worksheet>', dv + '</worksheet>');
+  }
+  zip.file(tplFile, sheetXml);
+  var out = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+  return out;
+}
+async function onImportVoucherExcel(fromToolbar){
+  // 從工具欄撳：先跳去設置頁，等用戶睇到預覽
+  if(fromToolbar){
+    var nav = document.getElementById('tgSettingsNav');
+    if(nav) nav.click();
+    await new Promise(function(r){ setTimeout(r, 300); });
+  }
   var box = document.getElementById('tgVoucherImportBox');
   box.hidden = true; box.innerHTML = ''; pendingVoucherImport = null;
   // v3.23.0：改為揀資料夾（Excel＋附件放同一個資料夾）
@@ -1544,6 +1608,7 @@ async function onImportVoucherExcel(){
       var nm = e.name || '';
       if(!e.isDirectory && /\.(xlsx|xls)$/i.test(nm)) xlsxFiles.push(folder + '/' + nm);
     }
+    xlsxFiles.sort(); // 排序後取第一個，行為確定（唔依賴 read_dir 回傳順序）
   }catch(e){
     setSettingsStatus('讀取資料夾失敗：' + (e.message || e));
     return;

@@ -2715,7 +2715,7 @@
     "\u88FD\u8868 Made By",
     "\u8986\u6838 Checked By",
     "\u6279\u6838 Approved By",
-    "\u9644\u4EF6 Attachment\uFF08\u6A94\u6848\u8DEF\u5F91\uFF0C\u591A\u500B\u7528 ; \u5206\u9694\uFF09"
+    "\u9644\u4EF6 Attachment\uFF08\u6A94\u540D\uFF0C\u591A\u500B\u7528 ; \u5206\u9694\uFF09"
   ];
   function buildVoucherTemplateHelp() {
     return [
@@ -3164,7 +3164,7 @@
     return { addedAccounts, skippedAccounts, setOpening, openingErrors };
   }
   var bridge = {
-    desktopVersion: "3.23.0",
+    desktopVersion: "3.24.0",
     createBackupPayload,
     validateBackup,
     prepareRestore,
@@ -3189,6 +3189,7 @@
     attachmentButtonHTML,
     bindAttachmentButtons,
     openAttachmentList,
+    getAccountNames: () => store.accounts.map((a) => a.name),
     setVoucherAttachments: (no, atts) => {
       const v = store.vouchers.find((x) => x.no === no);
       if (!v) return false;

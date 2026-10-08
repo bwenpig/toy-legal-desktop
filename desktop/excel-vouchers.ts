@@ -45,7 +45,7 @@ export const VOUCHER_TEMPLATE_HEADERS = [
   '製表 Made By',
   '覆核 Checked By',
   '批核 Approved By',
-  '附件 Attachment（檔案路徑，多個用 ; 分隔）',
+  '附件 Attachment（檔名，多個用 ; 分隔）',
 ];
 
 /** 範本 AOA（含「說明」＋「範本」兩個 sheet 嘅資料，由 glue 分別寫 sheet） */
@@ -98,7 +98,7 @@ export interface VoucherDraft {
   approvedBy: string;
   lines: VoucherImportLine[];
   rowNums: number[]; // Excel 行號（1-based，含標題行）
-  /** 附件檔案路徑（Excel 第 13 欄，; 分隔；匯入時由 glue 讀檔） */
+  /** 附件檔名（Excel 第 13 欄，; 分隔；匯入時由 glue 喺匯入資料夾內搵檔讀取） */
   attachmentPaths: string[];
 }
 
@@ -241,7 +241,7 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
     const drAcctRaw = c(4), drAmtRaw = cellStr(r[5] as ExcelCell);
     const crAcctRaw = c(6), crAmtRaw = cellStr(r[7] as ExcelCell);
     const detail = c(8), madeBy = c(9), checkedBy = c(10), approvedBy = c(11);
-    // 第 13 欄：附件路徑（; ／ ； ／換行分隔；相對路徑以 Excel 檔所在目錄為準）
+    // 第 13 欄：附件檔名（; ／ ； ／換行分隔；以匯入資料夾為基準，子資料夾可用相對路徑）
     const attachmentPaths = c(12).split(/[;；\n\r]+/).map(s => s.trim()).filter(Boolean);
     let rowOk = true;
     const err = (msg: string) => { errors.push({ rowNum, message: msg }); rowOk = false; };

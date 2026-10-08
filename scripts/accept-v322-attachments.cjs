@@ -78,6 +78,10 @@ async function mockInvoke(cmd, a, options) {
   if (cmd === 'plugin:dialog|open') return mockDialogOpenQueue.length ? mockDialogOpenQueue.shift() : null;
   if (cmd === 'plugin:fs|mkdir') { fs.mkdirSync(a.path, { recursive: true }); return; }
   if (cmd === 'plugin:fs|exists') return fs.existsSync(a.path);
+  if (cmd === 'plugin:fs|read_dir') { // v3.23.0 資料夾模式：列出資料夾內容
+    const entries = fs.readdirSync(a.path, { withFileTypes: true });
+    return entries.map((e) => ({ name: e.name, isDirectory: e.isDirectory(), isFile: e.isFile(), isSymlink: e.isSymbolicLink() }));
+  }
   if (cmd === 'plugin:fs|write_file') {
     const p = decodeURIComponent((options.headers && options.headers.path) || '');
     const bytes = (a instanceof Uint8Array) ? a
@@ -140,7 +144,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // A0 前置：版本＋財年
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('A0 badge 係 v3.22.1', badge === 'v3.22.1核心 v3.15.1', String(badge));
+  check('A0 badge 係 v3.23.0', badge === 'v3.23.0核心 v3.15.1', String(badge));
   const fys = await page.evaluate(() => window.__TG__.fiscalYears());
   const openFy = (fys || []).find((f) => f.from <= '2026-10-08' && '2026-10-08' <= f.to);
   check('A0 已有財年涵蓋測試日期', !!openFy, JSON.stringify((fys || []).map((f) => f.key)));
@@ -158,7 +162,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   }));
   check('A1 匯入 4 科目', impRes && impRes.addedAccounts === 4, JSON.stringify(impRes));
 
-  // 附件 fixture（放 Excel 目錄，測相對路徑解析）
+  // 附件 fixture（放匯入資料夾，測檔名解析；sub/ 子資料夾＋絕對路徑照舊支援）
   const attA = Buffer.from('ATTACHMENT-A-CONTENT-中文');
   const attB = Buffer.from('ATTACHMENT-B-CONTENT');
   const subDir = path.join(WORK, 'sub');
@@ -180,11 +184,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const tplRows = XLSX.utils.sheet_to_json(twb.Sheets['範本'], { header: 1, defval: '' });
     tplCols = tplRows[0] || [];
   }
-  check('A2 範本有 13 欄＋M 欄係附件', tplCols.length === 13 && /附件.*檔案路徑/.test(String(tplCols[12])),
+  check('A2 範本有 13 欄＋M 欄係附件（檔名）', tplCols.length === 13 && /附件.*檔名/.test(String(tplCols[12])),
     tplCols.length + ' cols :: ' + String(tplCols[12]));
 
   // A3 建測試 Excel（含附件欄；有 1 個壞路徑測容錯）
-  const impXlsxPath = path.join(WORK, 'att-import-test.xlsx');
+  // 檔名加 0- 前綴：資料夾內仲有 A2 下載嘅範本檔，排序後確保用測試檔（唔係範本）
+  const impXlsxPath = path.join(WORK, '0-att-import-test.xlsx');
   {
     const iwb = XLSX.utils.book_new();
     const iws = XLSX.utils.aoa_to_sheet([
@@ -202,8 +207,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     XLSX.writeFile(iwb, impXlsxPath);
   }
 
-  // A4 經設置 UI 匯入：預覽要顯示 📎 數量
-  mockDialogOpenQueue.push(impXlsxPath);
+  // A4 經設置 UI 匯入（v3.23.0 資料夾模式：dialog 回傳資料夾，附件喺同資料夾搵）
+  mockDialogOpenQueue.push(WORK);
   await page.evaluate(() => document.getElementById('tgVoucherImport').click());
   await sleep(1500);
   const preview = await page.evaluate(() => ({
