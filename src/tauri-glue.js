@@ -879,6 +879,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.24.1', '修復從資料夾匯入 Voucher 無反應：dialog 加 try-catch＋錯誤提示；空資料夾／冇 Excel 會有明確提示。'],
   ['3.24.0', '工具欄精簡：移除下載／複製／還原備份＋匯入 JSON；新增下載 Voucher 範本（含科目下拉選單）＋從資料夾匯入 Voucher；科目範本保留。'],
   ['3.23.0', 'Voucher Excel 匯入改為資料夾模式：揀一個資料夾（內含 Excel＋附件），M 欄填附件檔名，系統自動喺資料夾內搵檔匯入。'],
   ['3.22.1', '修復兩個 v3.22.0 問題：(1) 匯入流程靜默丟數據——debounced 寫庫同匯入嘅直接寫庫重疊，第二次 transaction 失敗但 UI 照報成功，寫庫而家排隊執行唔再重疊；(2) voucher 列表 📎 按鈕實際無顯示——舊實現 wrap 咗無人呼叫嘅橋接函數，改用 MutationObserver，任何重繪（入賬／匯入／還原／搜尋）後自動補上按鈕。'],
@@ -1595,26 +1596,38 @@ async function onImportVoucherExcel(fromToolbar){
   var box = document.getElementById('tgVoucherImportBox');
   box.hidden = true; box.innerHTML = ''; pendingVoucherImport = null;
   // v3.23.0：改為揀資料夾（Excel＋附件放同一個資料夾）
-  var folder = await dlgOpen({ title: '選擇匯入資料夾（內含 Excel＋附件）', directory: true, multiple: false });
-  if(!folder) return;
+  var folder = null;
+  try{
+    folder = await dlgOpen({ title: '選擇匯入資料夾（內含 Excel＋附件）', directory: true, multiple: false });
+  }catch(e){
+    setSettingsStatus('開啟資料夾選擇失敗：' + (e.message || e));
+    return;
+  }
+  if(!folder){ setSettingsStatus('已取消選擇資料夾。'); return; }
   if(Array.isArray(folder)) folder = folder[0];
   folder = String(folder);
+  console.log('[desktop] 匯入資料夾：', folder);
   setSettingsStatus('正在掃描資料夾…');
   var xlsxFiles = [];
   try{
     var entries = await invoke('plugin:fs|read_dir', { path: folder });
+    if(!entries || !entries.length){
+      setSettingsStatus('資料夾係空嘅：' + folder);
+      return;
+    }
     for(var i = 0; i < entries.length; i++){
       var e = entries[i];
       var nm = e.name || '';
       if(!e.isDirectory && /\.(xlsx|xls)$/i.test(nm)) xlsxFiles.push(folder + '/' + nm);
     }
     xlsxFiles.sort(); // 排序後取第一個，行為確定（唔依賴 read_dir 回傳順序）
+    console.log('[desktop] 資料夾內 ' + entries.length + ' 項，Excel：' + xlsxFiles.length);
   }catch(e){
-    setSettingsStatus('讀取資料夾失敗：' + (e.message || e));
+    setSettingsStatus('讀取資料夾失敗：' + (e.message || e) + '（路徑：' + folder + '）');
     return;
   }
   if(!xlsxFiles.length){
-    setSettingsStatus('資料夾內冇 Excel 檔（.xlsx／.xls）。');
+    setSettingsStatus('資料夾內冇 Excel 檔（.xlsx／.xls）：' + folder);
     return;
   }
   var p = xlsxFiles[0];
