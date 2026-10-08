@@ -10,7 +10,7 @@
 import '../web-src/main';
 
 import { APP_VERSION } from '../web-src/version';
-import { store, selectedFiscalYear } from '../web-src/state';
+import { store, selectedFiscalYear, dateInFiscalYear } from '../web-src/state';
 import { currentFiscalStart } from '../web-src/ui';
 import { makeFiscalYear } from '../web-src/core/fiscal';
 import {
@@ -242,11 +242,12 @@ export interface DesktopBridge {
   selectedFiscalKey: () => string;
   /** 報表月份標籤（''=全年，否則 'YYYY-MM'），xlsx 標題用 */
   reportPeriodLabel: () => string;
+  getJournalVouchers: () => Array<{ no: string; attachments: Array<{ name: string; dataURL?: string; dataB64?: string; mime?: string }> }>;
 }
 
 /** 桌面版 bridge（tauri-glue.js 經呢度攞 app 功能）。 */
 const bridge: DesktopBridge = {
-  desktopVersion: '3.24.1',
+  desktopVersion: '3.24.2',
   createBackupPayload,
   validateBackup,
   prepareRestore,
@@ -286,6 +287,28 @@ const bridge: DesktopBridge = {
   reportPeriodLabel: () => {
     const m = store.reportState.month as { key?: string } | null;
     return m && m.key ? String(m.key) : '';
+  },
+  /** Journal 當前篩選嘅 voucher（供報表匯出附件用） */
+  getJournalVouchers: () => {
+    const m = store.reportState.month as { key?: string } | null;
+    const monthKey = m && m.key ? String(m.key) : null;
+    return store.vouchers
+      .filter((v) => {
+        try {
+          if (!dateInFiscalYear(v.date)) return false;
+        } catch { return false; }
+        if (monthKey && v.date.slice(0, 7) !== monthKey) return false;
+        return true;
+      })
+      .map((v) => ({
+        no: v.no,
+        attachments: (v.attachments || []).map((a) => ({
+          name: a.name,
+          dataURL: (a as { dataURL?: string }).dataURL,
+          dataB64: (a as { dataB64?: string }).dataB64,
+          mime: (a as { mime?: string }).mime || (a as { type?: string }).type,
+        })),
+      }));
   },
 };
 

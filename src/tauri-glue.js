@@ -769,12 +769,41 @@ async function exportExcelReports(){
       out = raw;
     }
     var fy = String((function(){ try{ return TG.fiscalLabel(); }catch(e){ return ''; } })()).replace(/[^A-Za-z0-9-]/g, '-');
-    var path = await dlgSave({ title: '儲存 Excel 報表',
-      defaultPath: 'Toys-Gallery-reports-' + fy + '.xlsx',
-      filters: [{ name: 'Excel 活頁簿', extensions: ['xlsx'] }] });
+    // v3.24.2：報表匯出改為 zip（含 Journal 對應月份嘅附件，按 voucher number 分目錄）
+    var zip = new window.JSZip();
+    var xlsxName = 'Toys-Gallery-reports-' + fy + '.xlsx';
+    zip.file(xlsxName, new Uint8Array(out));
+    var jvouchers = [];
+    try{ jvouchers = TG.getJournalVouchers ? TG.getJournalVouchers() : []; }catch(e){}
+    var attCount = 0;
+    for(var vi = 0; vi < jvouchers.length; vi++){
+      var jv = jvouchers[vi];
+      var jatts = jv.attachments || [];
+      for(var ai = 0; ai < jatts.length; ai++){
+        var ja = jatts[ai], jbytes = null;
+        try{
+          if(ja.dataURL && ja.dataURL.indexOf('data:') === 0){
+            jbytes = dataURLToParts(ja.dataURL).bytes;
+          }else if(ja.dataB64){
+            jbytes = Uint8Array.from(atob(ja.dataB64), function(c){ return c.charCodeAt(0); });
+          }
+        }catch(e){}
+        if(jbytes){
+          zip.file('attachments/' + sanitizeName(jv.no) + '/' + sanitizeName(ja.name || 'attachment'), jbytes);
+          attCount++;
+        }
+      }
+    }
+    var zipBytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    var path = await dlgSave({ title: '儲存 Excel 報表（含附件）',
+      defaultPath: 'Toys-Gallery-reports-' + fy + '.zip',
+      filters: [{ name: 'ZIP 壓縮檔', extensions: ['zip'] }] });
     if(!path){ setStatus('已取消匯出'); return; }
-    await fsWriteBytes(path, new Uint8Array(out));
-    setStatus('Excel 已匯出（9 份報表）' + (errors.length ? '；' + errors.length + ' 份有問題' : ''));
+    await fsWriteBytes(path, new Uint8Array(zipBytes));
+    var periodLabel = '';
+    try{ periodLabel = TG.reportPeriodLabel ? TG.reportPeriodLabel() : ''; }catch(e){}
+    setStatus('Excel 已匯出（9 份報表' + (periodLabel ? '，' + periodLabel : '') + '，' + attCount + ' 個附件）→ zip' +
+      (errors.length ? '；' + errors.length + ' 份報表有問題' : ''));
   }catch(e){
     console.error('[desktop] excel export failed:', e);
     setStatus('匯出失敗：' + (e.message || e));
@@ -879,6 +908,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.24.2', '修復匯入附件對應錯位（改用 voucherNo→路徑映射）；匯出 Excel 報表改為 zip（含 Journal 對應月份附件，按 voucher 號分目錄）。'],
   ['3.24.1', '修復從資料夾匯入 Voucher 無反應：dialog 加 try-catch＋錯誤提示；空資料夾／冇 Excel 會有明確提示。'],
   ['3.24.0', '工具欄精簡：移除下載／複製／還原備份＋匯入 JSON；新增下載 Voucher 範本（含科目下拉選單）＋從資料夾匯入 Voucher；科目範本保留。'],
   ['3.23.0', 'Voucher Excel 匯入改為資料夾模式：揀一個資料夾（內含 Excel＋附件），M 欄填附件檔名，系統自動喺資料夾內搵檔匯入。'],
@@ -1699,18 +1729,19 @@ async function doImportVouchers(){
   try{
     await backupDbFile('pre-voucher-excel-import');
     var res = TG.importVouchers(parsed.validDrafts);
-    // 附件：按 draft 嘅 attachmentPaths 讀檔，經 setVoucherAttachments 掛到 voucher
-    // v3.23.0：excelPath 而家係資料夾路徑（唔再係 Excel 檔路徑）
+    // 附件：按 attachmentMap（voucherNo → 路徑）讀檔，經 setVoucherAttachments 掛到 voucher
+    // v3.24.2：唔再用 index 對應（importVouchers 可能 skip draft 搞亂順序）
     var attOk = 0, attFail = [];
-    if(excelPath && TG.setVoucherAttachments){
+    if(excelPath && TG.setVoucherAttachments && res.attachmentMap){
       var attachDir = String(excelPath);
-      for(var vi = 0; vi < res.voucherNos.length && vi < parsed.validDrafts.length; vi++){
-        var vno = res.voucherNos[vi];
-        var draft = parsed.validDrafts[vi];
-        if(!draft || !draft.attachmentPaths || !draft.attachmentPaths.length) continue;
+      var vnos = Object.keys(res.attachmentMap);
+      for(var vi = 0; vi < vnos.length; vi++){
+        var vno = vnos[vi];
+        var paths = res.attachmentMap[vno];
+        if(!paths || !paths.length) continue;
         var atts = [];
-        for(var pi = 0; pi < draft.attachmentPaths.length; pi++){
-          var rel = draft.attachmentPaths[pi];
+        for(var pi = 0; pi < paths.length; pi++){
+          var rel = paths[pi];
           // 絕對路徑直接用；否則喺匯入資料夾內搵
           var full = (/^([a-zA-Z]:)?[/\\]/.test(rel) || rel.charAt(0) === '/')
             ? rel : (attachDir + '/' + rel);
@@ -1724,7 +1755,10 @@ async function doImportVouchers(){
           }
         }
         if(atts.length){
-          try{ TG.setVoucherAttachments(vno, atts); }catch(e){ attFail.push(vno + ': 掛載失敗'); }
+          try{
+            var ok = TG.setVoucherAttachments(vno, atts);
+            if(!ok) attFail.push(vno + ': 搵唔到 voucher');
+          }catch(e){ attFail.push(vno + ': 掛載失敗'); }
         }
       }
     }

@@ -2917,6 +2917,7 @@
   function importVouchers(drafts) {
     const taken = new Set(store.vouchers.map((v) => String(v.no).toLowerCase()));
     const voucherNos = [];
+    const attachmentMap = {};
     let needsReview = 0;
     for (const d of drafts) {
       const no = d.voucherNo || nextVoucherNumberFor(d.date, d.type, taken);
@@ -2950,6 +2951,9 @@
       } catch (e) {
       }
       voucherNos.push(no);
+      if (d.attachmentPaths && d.attachmentPaths.length) {
+        attachmentMap[no] = d.attachmentPaths;
+      }
     }
     renderInvoiceNumberList();
     renderVoucherList();
@@ -2957,7 +2961,7 @@
     renderReport();
     renderAccounts();
     renderKPIs();
-    return { imported: voucherNos.length, skipped: drafts.length - voucherNos.length, needsReview, voucherNos };
+    return { imported: voucherNos.length, skipped: drafts.length - voucherNos.length, needsReview, voucherNos, attachmentMap };
   }
 
   // desktop/excel-export.ts
@@ -3164,7 +3168,7 @@
     return { addedAccounts, skippedAccounts, setOpening, openingErrors };
   }
   var bridge = {
-    desktopVersion: "3.24.1",
+    desktopVersion: "3.24.2",
     createBackupPayload,
     validateBackup,
     prepareRestore,
@@ -3203,6 +3207,28 @@
     reportPeriodLabel: () => {
       const m = store.reportState.month;
       return m && m.key ? String(m.key) : "";
+    },
+    /** Journal 當前篩選嘅 voucher（供報表匯出附件用） */
+    getJournalVouchers: () => {
+      const m = store.reportState.month;
+      const monthKey = m && m.key ? String(m.key) : null;
+      return store.vouchers.filter((v) => {
+        try {
+          if (!dateInFiscalYear2(v.date)) return false;
+        } catch {
+          return false;
+        }
+        if (monthKey && v.date.slice(0, 7) !== monthKey) return false;
+        return true;
+      }).map((v) => ({
+        no: v.no,
+        attachments: (v.attachments || []).map((a) => ({
+          name: a.name,
+          dataURL: a.dataURL,
+          dataB64: a.dataB64,
+          mime: a.mime || a.type
+        }))
+      }));
     }
   };
   window.__TG__ = bridge;

@@ -185,10 +185,10 @@ function makeV1Sample(){
   // T1 badge（桌面版＋核心兩個版本；Web 核心版本喺 S2 驗）
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('T1 badge 顯示 v3.24.1＋核心 v3.15.1', badge === 'v3.24.1核心 v3.15.1', String(badge));
+  check('T1 badge 顯示 v3.24.2＋核心 v3.15.1', badge === 'v3.24.2核心 v3.15.1', String(badge));
   // T2 bridge
   const tgVer = await page.evaluate(() => window.__TG__ && window.__TG__.desktopVersion);
-  check('T2 __TG__.desktopVersion = 3.24.1', tgVer === "3.24.1", String(tgVer));
+  check('T2 __TG__.desktopVersion = 3.24.2', tgVer === "3.24.2", String(tgVer));
   const hasDb = await page.evaluate(() => !!window.__TG_DB__);
   check('T3 __TG_DB__ 存在', hasDb);
   // T4 啟動狀態（全新 DB → 空白賬套）
@@ -339,8 +339,8 @@ function makeV1Sample(){
   const appHidden = await page.evaluate(() => document.getElementById('appShell').style.display === 'none');
   check('S1 設置畫面開啟＋隱藏 app', setVisible && appHidden);
   const setVer = await page.evaluate(() => document.querySelector('.tgset-ver').textContent);
-  check('S2 版本：桌面版 3.24.1＋Web核心 v3.15.1',
-    /3\.24\.1/.test(setVer) && /v3\.15\.1/.test(setVer),
+  check('S2 版本：桌面版 3.24.2＋Web核心 v3.15.1',
+    /3\.24\.2/.test(setVer) && /v3\.15\.1/.test(setVer),
     setVer.trim().replace(/\s+/g, ' ').slice(0, 70));
   // S3/S4 表預覽
   await sleep(800);
@@ -487,7 +487,7 @@ function makeV1Sample(){
   }
   check('X1 範本下載（說明＋範本）', tplOk && tplSheets.includes('說明'), tplSheets.join(','));
 
-  // X2 匯入：3 張草稿（2 有效＋1 借貸不平）— v3.24.1 起用資料夾模式
+  // X2 匯入：3 張草稿（2 有效＋1 借貸不平）— v3.24.2 起用資料夾模式
   const impFolder = path.join(WORK, 'voucher-import-folder');
   fs.mkdirSync(impFolder, { recursive: true });
   const impXlsxPath = path.join(impFolder, 'voucher-import-test.xlsx');
@@ -676,15 +676,21 @@ function makeV1Sample(){
     check('D3 刪除待匯入', delSt === 'rejected', 'status=' + delSt);
   }
 
-  // X4 報表 xlsx 執靚
+  // X4 報表 xlsx 執靚（v3.24.2 起改為 zip，含附件）
   savedDialogPath = null;
   await page.evaluate(() => document.getElementById('tgExportExcel').click());
   await sleep(5000);
-  const rptOk = savedDialogPath && savedDialogPath.endsWith('.xlsx') && fs.existsSync(savedDialogPath);
-  check('X4a 報表 xlsx 落地', rptOk, savedDialogPath || 'no path');
+  const rptOk = savedDialogPath && savedDialogPath.endsWith('.zip') && fs.existsSync(savedDialogPath);
+  check('X4a 報表 zip 落地', rptOk, savedDialogPath || 'no path');
   if (rptOk) {
-    const rz = await JSZip.loadAsync(fs.readFileSync(savedDialogPath));
-    const rwb = XLSX.read(fs.readFileSync(savedDialogPath), { type: 'buffer' });
+    const zipData = fs.readFileSync(savedDialogPath);
+    const outerZip = await JSZip.loadAsync(zipData);
+    // zip 入面搵 xlsx（第一個 .xlsx）
+    var xlsxNames = [];
+    outerZip.forEach(function(relPath){ if(/\.xlsx$/i.test(relPath)) xlsxNames.push(relPath); });
+    const xlsxBuf = await outerZip.file(xlsxNames[0]).async('nodebuffer');
+    const rz = await JSZip.loadAsync(xlsxBuf);
+    const rwb = XLSX.read(xlsxBuf, { type: 'buffer' });
     check('X4b 9 個 sheet', rwb.SheetNames.length === 9, rwb.SheetNames.length + ' sheets');
     let frozen = 0;
     for (let i = 1; i <= rwb.SheetNames.length; i++) {

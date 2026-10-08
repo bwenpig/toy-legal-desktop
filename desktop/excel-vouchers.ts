@@ -312,6 +312,8 @@ export interface VoucherImportResult {
   skipped: number;
   needsReview: number;
   voucherNos: string[];
+  /** v3.24.2：voucherNo → attachmentPaths 對應（供 glue 匯入附件用） */
+  attachmentMap: Record<string, string[]>;
 }
 
 /**
@@ -321,6 +323,7 @@ export interface VoucherImportResult {
 export function importVouchers(drafts: VoucherDraft[]): VoucherImportResult {
   const taken = new Set(store.vouchers.map((v) => String(v.no).toLowerCase()));
   const voucherNos: string[] = [];
+  const attachmentMap: Record<string, string[]> = {};
   let needsReview = 0;
 
   for (const d of drafts) {
@@ -354,6 +357,9 @@ export function importVouchers(drafts: VoucherDraft[]): VoucherImportResult {
       store.lastVoucherDates[fiscalYearForDate(v.date).key] = v.date;
     } catch (e) { /* 財年一定存在（parse 已驗） */ }
     voucherNos.push(no);
+    if(d.attachmentPaths && d.attachmentPaths.length){
+      attachmentMap[no] = d.attachmentPaths;
+    }
   }
 
   // 同 postBtn 一樣重繪
@@ -364,5 +370,5 @@ export function importVouchers(drafts: VoucherDraft[]): VoucherImportResult {
   renderAccounts();
   renderKPIs();
 
-  return { imported: voucherNos.length, skipped: drafts.length - voucherNos.length, needsReview, voucherNos };
+  return { imported: voucherNos.length, skipped: drafts.length - voucherNos.length, needsReview, voucherNos, attachmentMap };
 }
