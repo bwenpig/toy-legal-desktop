@@ -2714,7 +2714,8 @@
     "\u660E\u7D30 Detail",
     "\u88FD\u8868 Made By",
     "\u8986\u6838 Checked By",
-    "\u6279\u6838 Approved By"
+    "\u6279\u6838 Approved By",
+    "\u9644\u4EF6 Attachment\uFF08\u6A94\u6848\u8DEF\u5F91\uFF0C\u591A\u500B\u7528 ; \u5206\u9694\uFF09"
   ];
   function buildVoucherTemplateHelp() {
     return [
@@ -2727,19 +2728,21 @@
       ["5. \u79D1\u76EE\u586B\u7DE8\u865F\u6216\u540D\u7A31\uFF08\u5FC5\u9808\u5DF2\u55BA\u7CFB\u7D71\u5B58\u5728\uFF09\u3002\u91D1\u984D\u586B\u7F8E\u5143\u6578\u5B57\uFF08\u4F8B\u5982 1999.99\uFF09\u3002"],
       ["6. \u65E5\u671F\u683C\u5F0F YYYY-MM-DD\uFF0C\u4E14\u5FC5\u9808\u5C6C\u65BC\u5DF2\u55BA\u7CFB\u7D71\u958B\u5497\u5605\u8CA1\u5E74\u3002"],
       ["7. \u88FD\u8868\uFF0F\u8986\u6838\uFF0F\u6279\u6838\u4E09\u500B\u90FD\u8981\u586B\uFF08\u540C\u7CFB\u7D71\u5165\u8CEC\u898F\u5247\u4E00\u81F4\uFF09\u3002"],
-      ["8. \u7B2C\u4E00\u884C\u4FC2\u6A19\u984C\u5217\uFF0C\u8ACB\u4FDD\u7559\uFF1B\u4E0B\u9762\u5605\u793A\u4F8B\u884C\u8ACB\u522A\u9664\u5F8C\u518D\u586B\u3002"],
-      ["9. \u532F\u5165\u6642\u6703\u9010\u884C\u9A57\u8B49\uFF0C\u6709\u932F\u5605\u884C\u6703\u5217\u51FA\uFF0C\u53EF\u63C0\u300C\u53EA\u532F\u5165\u6709\u6548\u884C\u300D\u3002"]
+      ["8. M \u6B04\u300C\u9644\u4EF6\u300D\uFF1A\u586B\u9644\u4EF6\u6A94\u6848\u8DEF\u5F91\uFF0C\u591A\u500B\u7528 ; \u5206\u9694\u3002\u76F8\u5C0D\u8DEF\u5F91\u4EE5\u5462\u500B Excel \u6A94\u6240\u5728\u76EE\u9304\u70BA\u6E96\u3002"],
+      ["   \u4F8B\uFF1Areceipt1.pdf;receipt2.jpg \u6216 /Users/xxx/Documents/invoice.pdf\u3002\u532F\u5165\u6642\u81EA\u52D5\u8B80\u6A94\u5B58\u5165\u6578\u64DA\u5EAB\u3002"],
+      ["9. \u7B2C\u4E00\u884C\u4FC2\u6A19\u984C\u5217\uFF0C\u8ACB\u4FDD\u7559\uFF1B\u4E0B\u9762\u5605\u793A\u4F8B\u884C\u8ACB\u522A\u9664\u5F8C\u518D\u586B\u3002"],
+      ["10. \u532F\u5165\u6642\u6703\u9010\u884C\u9A57\u8B49\uFF0C\u6709\u932F\u5605\u884C\u6703\u5217\u51FA\uFF0C\u53EF\u63C0\u300C\u53EA\u532F\u5165\u6709\u6548\u884C\u300D\u3002"]
     ];
   }
   function buildVoucherTemplateExample() {
     return [
       VOUCHER_TEMPLATE_HEADERS,
-      // 示例 voucher 1：指定編號，兩行
-      ["2024-04-05", "B040124", "B", "\u6536\u5230 Toy Hunters \u8CA8\u6B3E", "Bank Saving Account", 5e3, "", "", "INV2024040026", "\u963FBin", "\u963FMay", "\u8001\u95C6"],
-      ["2024-04-05", "B040124", "B", "\u6536\u5230 Toy Hunters \u8CA8\u6B3E", "", "", "Accounts Receivable of Toy Hunters", 5e3, "INV2024040026", "\u963FBin", "\u963FMay", "\u8001\u95C6"],
+      // 示例 voucher 1：指定編號，兩行，有附件
+      ["2024-04-05", "B040124", "B", "\u6536\u5230 Toy Hunters \u8CA8\u6B3E", "Bank Saving Account", 5e3, "", "", "INV2024040026", "\u963FBin", "\u963FMay", "\u8001\u95C6", "receipt1.pdf;receipt2.jpg"],
+      ["2024-04-05", "B040124", "B", "\u6536\u5230 Toy Hunters \u8CA8\u6B3E", "", "", "Accounts Receivable of Toy Hunters", 5e3, "INV2024040026", "\u963FBin", "\u963FMay", "\u8001\u95C6", ""],
       // 示例 voucher 2：吉編號（自動），兩行
-      ["2024-04-06", "", "T", "\u4ED8\u4F9B\u61C9\u5546\u8A02\u91D1", "Prepayment to Supplier", 1200.5, "", "", "", "\u963FBin", "\u963FMay", "\u8001\u95C6"],
-      ["2024-04-06", "", "T", "\u4ED8\u4F9B\u61C9\u5546\u8A02\u91D1", "", "", "Bank Saving Account", 1200.5, "", "\u963FBin", "\u963FMay", "\u8001\u95C6"]
+      ["2024-04-06", "", "T", "\u4ED8\u4F9B\u61C9\u5546\u8A02\u91D1", "Prepayment to Supplier", 1200.5, "", "", "", "\u963FBin", "\u963FMay", "\u8001\u95C6", ""],
+      ["2024-04-06", "", "T", "\u4ED8\u4F9B\u61C9\u5546\u8A02\u91D1", "", "", "Bank Saving Account", 1200.5, "", "\u963FBin", "\u963FMay", "\u8001\u95C6", ""]
     ];
   }
   function cellStr(v) {
@@ -2795,7 +2798,7 @@
     const existingNos = new Set(store.vouchers.map((v) => String(v.no).toLowerCase()));
     const draftByKey = /* @__PURE__ */ new Map();
     let autoGroup = 0;
-    const getDraft = (rowNum, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy) => {
+    const getDraft = (rowNum, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy, attachmentPaths) => {
       let key;
       if (voucherNo) {
         key = "no:" + voucherNo.toLowerCase();
@@ -2819,7 +2822,8 @@
           checkedBy,
           approvedBy,
           lines: [],
-          rowNums: []
+          rowNums: [],
+          attachmentPaths: [...attachmentPaths]
         };
         draftByKey.set(key, d);
         drafts.push(d);
@@ -2827,6 +2831,9 @@
         if (d.date !== date || d.type !== type) {
           errors.push({ rowNum, message: "\u540C\u4E00 Voucher No. \u5605\u65E5\u671F\uFF0F\u985E\u578B\u5514\u4E00\u81F4\uFF08" + d.date + "/" + d.type + " vs " + date + "/" + type + "\uFF09\u3002" });
           return null;
+        }
+        for (const p of attachmentPaths) {
+          if (p && !d.attachmentPaths.includes(p)) d.attachmentPaths.push(p);
         }
       }
       return d;
@@ -2840,6 +2847,7 @@
       const drAcctRaw = c(4), drAmtRaw = cellStr(r[5]);
       const crAcctRaw = c(6), crAmtRaw = cellStr(r[7]);
       const detail = c(8), madeBy = c(9), checkedBy = c(10), approvedBy = c(11);
+      const attachmentPaths = c(12).split(/[;；\n\r]+/).map((s) => s.trim()).filter(Boolean);
       let rowOk = true;
       const err = (msg) => {
         errors.push({ rowNum, message: msg });
@@ -2876,7 +2884,7 @@
       if (!acctRaw) err("\u8ACB\u586B" + (drFilled ? "\u501F\u65B9" : "\u8CB8\u65B9") + "\u79D1\u76EE\u3002");
       else if (!acct) err("\u79D1\u76EE\u5514\u5B58\u5728\uFF1A" + acctRaw + "\uFF08\u586B\u7DE8\u865F\u6216\u540D\u7A31\uFF0C\u5FC5\u9808\u5DF2\u55BA\u7CFB\u7D71\u5B58\u5728\uFF09\u3002");
       if (!rowOk) continue;
-      const d = getDraft(rowNum, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy);
+      const d = getDraft(rowNum, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy, attachmentPaths);
       if (!d) continue;
       d.lines.push({
         account: acct.name,
@@ -3156,7 +3164,7 @@
     return { addedAccounts, skippedAccounts, setOpening, openingErrors };
   }
   var bridge = {
-    desktopVersion: "3.21.5",
+    desktopVersion: "3.22.0",
     createBackupPayload,
     validateBackup,
     prepareRestore,
@@ -3177,6 +3185,9 @@
     parseVoucherImport,
     importVouchers,
     nextVoucherNumberFor,
+    renderVoucherList,
+    attachmentButtonHTML,
+    bindAttachmentButtons,
     setVoucherAttachments: (no, atts) => {
       const v = store.vouchers.find((x) => x.no === no);
       if (!v) return false;

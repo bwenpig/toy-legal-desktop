@@ -26,7 +26,7 @@ import {
 } from '../web-src/backup';
 import { reportBody, renderReport, renderKPIs } from '../web-src/reports';
 import { renderAccounts, sortAccounts } from '../web-src/accounts';
-import { renderVoucherList, renderInvoiceNumberList } from '../web-src/vouchers';
+import { renderVoucherList, renderInvoiceNumberList, attachmentButtonHTML, bindAttachmentButtons } from '../web-src/vouchers';
 import { renderLedger } from '../web-src/ledger';
 import { navigate, renderStaffNames } from '../web-src/ui';
 import { dollarsToCents, toCents } from '../web-src/money';
@@ -227,6 +227,9 @@ export interface DesktopBridge {
   buildVoucherTemplateExample: typeof buildVoucherTemplateExample;
   parseVoucherImport: (rows: (string | number)[][]) => ParsedVoucherImport;
   importVouchers: typeof importVouchers;
+  renderVoucherList: typeof renderVoucherList;
+  attachmentButtonHTML: typeof attachmentButtonHTML;
+  bindAttachmentButtons: typeof bindAttachmentButtons;
   nextVoucherNumberFor: typeof nextVoucherNumberFor;
   /** 待匯入 voucher（MCP）匯入後補附件 */
   setVoucherAttachments: (no: string, atts: { name: string; mime: string; dataURL: string }[]) => boolean;
@@ -241,7 +244,7 @@ export interface DesktopBridge {
 
 /** 桌面版 bridge（tauri-glue.js 經呢度攞 app 功能）。 */
 const bridge: DesktopBridge = {
-  desktopVersion: '3.21.5',
+  desktopVersion: '3.22.0',
   createBackupPayload,
   validateBackup,
   prepareRestore,
@@ -262,6 +265,9 @@ const bridge: DesktopBridge = {
   parseVoucherImport,
   importVouchers,
   nextVoucherNumberFor,
+  renderVoucherList,
+  attachmentButtonHTML,
+  bindAttachmentButtons,
   setVoucherAttachments: (no, atts) => {
     const v = store.vouchers.find((x) => x.no === no);
     if (!v) return false;

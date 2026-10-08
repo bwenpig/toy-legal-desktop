@@ -197,6 +197,15 @@ function bytesToBase64(bytes){
 function bytesToDataURL(bytes, mime){
   return 'data:' + (mime || 'application/octet-stream') + ';base64,' + bytesToBase64(bytes);
 }
+function guessMime(name){
+  var ext = String(name || '').split('.').pop().toLowerCase();
+  var map = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+    gif: 'image/gif', webp: 'image/webp', bmp: 'image/bmp', heic: 'image/heic',
+    txt: 'text/plain', csv: 'text/csv', xls: 'application/vnd.ms-excel',
+    xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
+  return map[ext] || 'application/octet-stream';
+}
 function eachVoucherWithAttachment(payload, fn){
   var vs = (payload.data && payload.data.vouchers) || [];
   if(payload.data && payload.data.workingVoucher) vs = vs.concat([payload.data.workingVoucher]);
@@ -346,6 +355,39 @@ async function startup(){
   // 桌面版下載改行 native：備份 JSON／CSV 唔經 window.open popup，直接 dialog＋fs 落檔
   try{ TG.setNativeDownload(nativeDownload); }
   catch(e){ console.error('[desktop] setNativeDownload failed:', e); }
+
+  // v3.22.0: voucher 列表加附件按鈕（桌面獨有 patch，唔改 web-src）
+  // 原生 renderVoucherList 唔顯示附件，呢度 wrap 完加 📎 按鈕
+  try{
+    if(TG.renderVoucherList && TG.attachmentButtonHTML && TG.bindAttachmentButtons){
+      var _origRenderVoucherList = TG.renderVoucherList;
+      TG.renderVoucherList = function(){
+        _origRenderVoucherList();
+        try{
+          var body = document.getElementById('voucherListBody');
+          if(!body) return;
+          var rows = body.querySelectorAll('tr');
+          for(var i = 0; i < rows.length; i++){
+            var row = rows[i];
+            var editBtn = row.querySelector('.edit-voucher');
+            if(!editBtn) continue;
+            var idx = Number(editBtn.getAttribute('data-index'));
+            if(isNaN(idx)) continue;
+            var btnHtml = TG.attachmentButtonHTML(idx);
+            if(!btnHtml) continue;
+            // 加到 Voucher 號嗰格（第二欄）
+            var voucherCell = row.querySelectorAll('td')[1];
+            if(voucherCell && voucherCell.querySelector('b') && !voucherCell.querySelector('.attachment-btn')){
+              voucherCell.querySelector('b').insertAdjacentHTML('afterend', btnHtml);
+            }
+          }
+          TG.bindAttachmentButtons(body);
+        }catch(e){ console.error('[desktop] voucher list attachment patch failed:', e); }
+      };
+      // 初次渲染都 patch
+      try{ TG.renderVoucherList(); }catch(e){}
+    }
+  }catch(e){ console.error('[desktop] wrap renderVoucherList failed:', e); }
 
   // 工具欄 JSON 還原（app 原生 modal）完成後：無論 dbWriteEnabled 係咩狀態，
   // 只要有數據就直接寫庫。唔依賴 debounced persist，確保一定寫入。
@@ -803,6 +845,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.22.0', 'Voucher Excel 匯入支援附件：第 13 欄填檔案路徑（; 分隔），匯入自動讀檔入庫；voucher 列表加 📎 附件按鈕。'],
   ['3.21.5', '匯入去重：accounts／vouchers／invoices 重複時保留最後一筆，唔再爆 UNIQUE 錯誤；side 缺失自動推斷。'],
   ['3.21.5', '修復設置 JSON 匯入寫庫失敗：備份科目缺 side 時由類別自動推斷（資產/成本/費用=借方，其餘=貸方），唔再成個 transaction rollback 令表預覽全 0。'],
   ['3.21.4', '工具欄 JSON 還原後無論咩狀態都直接寫庫（唔再依賴 debounced persist）；寫庫失敗會顯示錯誤。'],
@@ -1431,6 +1474,7 @@ async function doImportJson(){
 
 /* ---------- 9f. Voucher Excel 批量匯入（設置畫面） ---------- */
 var pendingVoucherImport = null; // ParsedVoucherImport
+var pendingVoucherExcelPath = null; // Excel 檔路徑（附件相對路徑基準）
 function fmtCentsPlain(c){
   var n = Math.trunc(Number(c) || 0), neg = n < 0, abs = Math.abs(n);
   return (neg ? '-' : '') + Math.floor(abs / 100) + '.' + String(abs % 100).padStart(2, '0');
@@ -1443,9 +1487,9 @@ async function downloadVoucherTemplate(){
     wsHelp['!cols'] = [{ wch: 95 }];
     XLSX.utils.book_append_sheet(wb, wsHelp, '說明');
     var wsTpl = XLSX.utils.aoa_to_sheet(TG.buildVoucherTemplateExample());
-    wsTpl['!cols'] = [{wch:14},{wch:18},{wch:16},{wch:32},{wch:32},{wch:14},{wch:32},{wch:14},{wch:24},{wch:12},{wch:12},{wch:12}];
+    wsTpl['!cols'] = [{wch:14},{wch:18},{wch:16},{wch:32},{wch:32},{wch:14},{wch:32},{wch:14},{wch:24},{wch:12},{wch:12},{wch:12},{wch:36}];
     var tplRange = XLSX.utils.decode_range(wsTpl['!ref']);
-    wsTpl['!autofilter'] = { ref: XLSX.utils.encode_range({r:0,c:0},{r:tplRange.e.r,c:11}) };
+    wsTpl['!autofilter'] = { ref: XLSX.utils.encode_range({r:0,c:0},{r:tplRange.e.r,c:12}) };
     XLSX.utils.book_append_sheet(wb, wsTpl, '範本');
     var out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     var path = await dlgSave({ title: '下載 Voucher 匯入範本',
@@ -1463,6 +1507,8 @@ async function onImportVoucherExcel(){
     filters: [{ name: 'Excel', extensions: ['xlsx', 'xls'] }], multiple: false });
   if(!p) return;
   if(Array.isArray(p)) p = p[0];
+  p = String(p);
+  pendingVoucherExcelPath = p; // 記住 Excel 路徑，供附件相對路徑解析
   setSettingsStatus('正在讀取 Excel…');
   try{
     var wb = XLSX.read(await fsReadBytes(p), { type: 'array' });
@@ -1489,12 +1535,13 @@ function renderVoucherImportPreview(box, parsed){
   }
   if(parsed.validDrafts.length){
     html += '<p><strong>有效 voucher（' + parsed.validDrafts.length + ' 張）：</strong></p>' +
-      '<div class="tgset-gridwrap" style="max-height:220px"><table class="tgset-grid"><thead><tr><th>Voucher No.</th><th>日期</th><th>類型</th><th>摘要</th><th>行數</th><th>金額</th></tr></thead><tbody>' +
+      '<div class="tgset-gridwrap" style="max-height:220px"><table class="tgset-grid"><thead><tr><th>Voucher No.</th><th>日期</th><th>類型</th><th>摘要</th><th>行數</th><th>金額</th><th>附件</th></tr></thead><tbody>' +
       parsed.validDrafts.map(function(d){
         var dr = d.lines.reduce(function(s, l){ return s + l.debit; }, 0);
+        var att = (d.attachmentPaths && d.attachmentPaths.length) ? ('📎 ' + d.attachmentPaths.length + ' 個') : '—';
         return '<tr><td>' + escHtml(d.voucherNo || '（自動編號）') + '</td><td>' + escHtml(d.date) + '</td><td>' +
           (d.type === 'B' ? '銀行' : '轉賬') + '</td><td>' + escHtml(d.desc) + '</td><td>' + d.lines.length +
-          '</td><td>' + escHtml(fmtCentsPlain(dr)) + '</td></tr>';
+          '</td><td>' + escHtml(fmtCentsPlain(dr)) + '</td><td>' + escHtml(att) + '</td></tr>';
       }).join('') + '</tbody></table></div>' +
       '<p><button class="btn primary" id="tgVoucherImportGo" type="button">只匯入有效行（' +
       parsed.validDrafts.length + ' 張）</button> ' +
@@ -1514,7 +1561,9 @@ async function doImportVouchers(){
   var box = document.getElementById('tgVoucherImportBox');
   if(box) box.hidden = true;
   var parsed = pendingVoucherImport;
+  var excelPath = pendingVoucherExcelPath;
   pendingVoucherImport = null;
+  pendingVoucherExcelPath = null;
   if(!parsed || !parsed.validDrafts.length) return;
   setSettingsStatus('正在匯入（先備份目前數據庫）…');
   dbWriteEnabled = false;
@@ -1522,14 +1571,44 @@ async function doImportVouchers(){
   try{
     await backupDbFile('pre-voucher-excel-import');
     var res = TG.importVouchers(parsed.validDrafts);
+    // 附件：按 draft 嘅 attachmentPaths 讀檔，經 setVoucherAttachments 掛到 voucher
+    var attOk = 0, attFail = [];
+    if(excelPath && TG.setVoucherAttachments){
+      var excelDir = String(excelPath).replace(/[/\\][^/\\]*$/, '');
+      for(var vi = 0; vi < res.voucherNos.length && vi < parsed.validDrafts.length; vi++){
+        var vno = res.voucherNos[vi];
+        var draft = parsed.validDrafts[vi];
+        if(!draft || !draft.attachmentPaths || !draft.attachmentPaths.length) continue;
+        var atts = [];
+        for(var pi = 0; pi < draft.attachmentPaths.length; pi++){
+          var rel = draft.attachmentPaths[pi];
+          var full = (/^([a-zA-Z]:)?[/\\]/.test(rel) || rel.charAt(0) === '/')
+            ? rel : (excelDir + '/' + rel);
+          try{
+            var bytes = await fsReadBytes(full);
+            var name = full.split('/').pop().split('\\').pop();
+            atts.push({ name: name, mime: guessMime(name), dataURL: bytesToDataURL(bytes, guessMime(name)) });
+            attOk++;
+          }catch(e){
+            attFail.push(vno + ': ' + rel);
+          }
+        }
+        if(atts.length){
+          try{ TG.setVoucherAttachments(vno, atts); }catch(e){ attFail.push(vno + ': 掛載失敗'); }
+        }
+      }
+    }
     dbWriteEnabled = true;
     lastStableHash = null;
     await persistNow();
     await refreshTableList();
-    setSettingsStatus('匯入完成：' + res.imported + ' 張 voucher（' +
+    var msg = '匯入完成：' + res.imported + ' 張 voucher（' +
       res.voucherNos.slice(0, 5).join('、') + (res.voucherNos.length > 5 ? ' 等' : '') + '）' +
-      (res.needsReview ? '；其中 ' + res.needsReview + ' 張對銷差額標示為「待核對」。' : '。') +
-      '舊數據庫已備份。');
+      (res.needsReview ? '；其中 ' + res.needsReview + ' 張對銷差額標示為「待核對」。' : '。');
+    if(attOk) msg += '附件 ' + attOk + ' 個已匯入。';
+    if(attFail.length) msg += '附件失敗 ' + attFail.length + ' 個：' + attFail.slice(0, 3).join('；') + (attFail.length > 3 ? '…' : '');
+    msg += '舊數據庫已備份。';
+    setSettingsStatus(msg);
   }catch(e){
     console.error('[desktop] voucher excel import 失敗：', e);
     dbWriteEnabled = true;

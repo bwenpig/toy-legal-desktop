@@ -45,6 +45,7 @@ export const VOUCHER_TEMPLATE_HEADERS = [
   '製表 Made By',
   '覆核 Checked By',
   '批核 Approved By',
+  '附件 Attachment（檔案路徑，多個用 ; 分隔）',
 ];
 
 /** 範本 AOA（含「說明」＋「範本」兩個 sheet 嘅資料，由 glue 分別寫 sheet） */
@@ -59,20 +60,22 @@ export function buildVoucherTemplateHelp(): ExcelRows {
     ['5. 科目填編號或名稱（必須已喺系統存在）。金額填美元數字（例如 1999.99）。'],
     ['6. 日期格式 YYYY-MM-DD，且必須屬於已喺系統開咗嘅財年。'],
     ['7. 製表／覆核／批核三個都要填（同系統入賬規則一致）。'],
-    ['8. 第一行係標題列，請保留；下面嘅示例行請刪除後再填。'],
-    ['9. 匯入時會逐行驗證，有錯嘅行會列出，可揀「只匯入有效行」。'],
+    ['8. M 欄「附件」：填附件檔案路徑，多個用 ; 分隔。相對路徑以呢個 Excel 檔所在目錄為準。'],
+    ['   例：receipt1.pdf;receipt2.jpg 或 /Users/xxx/Documents/invoice.pdf。匯入時自動讀檔存入數據庫。'],
+    ['9. 第一行係標題列，請保留；下面嘅示例行請刪除後再填。'],
+    ['10. 匯入時會逐行驗證，有錯嘅行會列出，可揀「只匯入有效行」。'],
   ];
 }
 
 export function buildVoucherTemplateExample(): ExcelRows {
   return [
     VOUCHER_TEMPLATE_HEADERS,
-    // 示例 voucher 1：指定編號，兩行
-    ['2024-04-05', 'B040124', 'B', '收到 Toy Hunters 貨款', 'Bank Saving Account', 5000, '', '', 'INV2024040026', '阿Bin', '阿May', '老闆'],
-    ['2024-04-05', 'B040124', 'B', '收到 Toy Hunters 貨款', '', '', 'Accounts Receivable of Toy Hunters', 5000, 'INV2024040026', '阿Bin', '阿May', '老闆'],
+    // 示例 voucher 1：指定編號，兩行，有附件
+    ['2024-04-05', 'B040124', 'B', '收到 Toy Hunters 貨款', 'Bank Saving Account', 5000, '', '', 'INV2024040026', '阿Bin', '阿May', '老闆', 'receipt1.pdf;receipt2.jpg'],
+    ['2024-04-05', 'B040124', 'B', '收到 Toy Hunters 貨款', '', '', 'Accounts Receivable of Toy Hunters', 5000, 'INV2024040026', '阿Bin', '阿May', '老闆', ''],
     // 示例 voucher 2：吉編號（自動），兩行
-    ['2024-04-06', '', 'T', '付供應商訂金', 'Prepayment to Supplier', 1200.5, '', '', '', '阿Bin', '阿May', '老闆'],
-    ['2024-04-06', '', 'T', '付供應商訂金', '', '', 'Bank Saving Account', 1200.5, '', '阿Bin', '阿May', '老闆'],
+    ['2024-04-06', '', 'T', '付供應商訂金', 'Prepayment to Supplier', 1200.5, '', '', '', '阿Bin', '阿May', '老闆', ''],
+    ['2024-04-06', '', 'T', '付供應商訂金', '', '', 'Bank Saving Account', 1200.5, '', '阿Bin', '阿May', '老闆', ''],
   ];
 }
 
@@ -95,6 +98,8 @@ export interface VoucherDraft {
   approvedBy: string;
   lines: VoucherImportLine[];
   rowNums: number[]; // Excel 行號（1-based，含標題行）
+  /** 附件檔案路徑（Excel 第 13 欄，; 分隔；匯入時由 glue 讀檔） */
+  attachmentPaths: string[];
 }
 
 export interface RowError {
@@ -184,6 +189,7 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
     madeBy: string,
     checkedBy: string,
     approvedBy: string,
+    attachmentPaths: string[],
   ): VoucherDraft | null => {
     let key: string;
     if (voucherNo) {
@@ -208,7 +214,7 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
     if (!d) {
       d = {
         key, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy,
-        lines: [], rowNums: [],
+        lines: [], rowNums: [], attachmentPaths: [...attachmentPaths],
       };
       draftByKey.set(key, d);
       drafts.push(d);
@@ -217,6 +223,10 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
       if (d.date !== date || d.type !== type) {
         errors.push({ rowNum, message: '同一 Voucher No. 嘅日期／類型唔一致（' + d.date + '/' + d.type + ' vs ' + date + '/' + type + '）。' });
         return null;
+      }
+      // 合併附件路徑（去重）
+      for (const p of attachmentPaths) {
+        if (p && !d.attachmentPaths.includes(p)) d.attachmentPaths.push(p);
       }
     }
     return d;
@@ -231,6 +241,8 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
     const drAcctRaw = c(4), drAmtRaw = cellStr(r[5] as ExcelCell);
     const crAcctRaw = c(6), crAmtRaw = cellStr(r[7] as ExcelCell);
     const detail = c(8), madeBy = c(9), checkedBy = c(10), approvedBy = c(11);
+    // 第 13 欄：附件路徑（; ／ ； ／換行分隔；相對路徑以 Excel 檔所在目錄為準）
+    const attachmentPaths = c(12).split(/[;；\n\r]+/).map(s => s.trim()).filter(Boolean);
     let rowOk = true;
     const err = (msg: string) => { errors.push({ rowNum, message: msg }); rowOk = false; };
 
@@ -260,7 +272,7 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
     else if (!acct) err('科目唔存在：' + acctRaw + '（填編號或名稱，必須已喺系統存在）。');
 
     if (!rowOk) continue;
-    const d = getDraft(rowNum, voucherNo, date, type as 'B' | 'T', desc, madeBy, checkedBy, approvedBy);
+    const d = getDraft(rowNum, voucherNo, date, type as 'B' | 'T', desc, madeBy, checkedBy, approvedBy, attachmentPaths);
     if (!d) continue;
     d.lines.push({
       account: (acct as { name: string }).name,
