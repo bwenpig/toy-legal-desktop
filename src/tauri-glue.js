@@ -313,8 +313,18 @@ async function nativeDownload(blob, filename, title){
   await fsWriteBytes(path, buf);
   return { desktopSaved: String(path).split('/').pop() };
 }
-async function persistNow(){
-  if(!dbWriteEnabled) return;
+/* 持久化互斥：SQLite 係單連接，兩個 persist 重疊會令第二次 BEGIN 失敗。
+ * 2026-10-08 修：debounced persist（任何 click 觸發）曾經同 doImportVouchers
+ * 嘅直接 persistNow 重疊，import 嗰次寫庫靜默失敗、UI 照報成功 → 丟數據。
+ * 而家所有 persist 排隊執行，唔會再有兩個 transaction 同時進行。 */
+var persistChain = Promise.resolve();
+function persistNow(){
+  if(!dbWriteEnabled) return Promise.resolve();
+  var run = persistChain.then(persistNowInner);
+  persistChain = run.catch(function(){}); // 斷鏈保護：失敗唔影響之後排隊
+  return run;
+}
+async function persistNowInner(){
   try{
     var payload = await TG.createBackupPayload();
     var h = strHash(stablePayloadString(payload));
@@ -356,38 +366,53 @@ async function startup(){
   try{ TG.setNativeDownload(nativeDownload); }
   catch(e){ console.error('[desktop] setNativeDownload failed:', e); }
 
-  // v3.22.0: voucher 列表加附件按鈕（桌面獨有 patch，唔改 web-src）
-  // 原生 renderVoucherList 唔顯示附件，呢度 wrap 完加 📎 按鈕
+  // v3.22.1: voucher 列表加附件按鈕（桌面獨有 patch，唔改 web-src）
+  // 原生 renderVoucherList 唔顯示附件；各處（入賬／匯入／還原／搜尋）都係直接
+  // import 呼叫原函數，wrap TG 橋接版本唔會生效（v3.22.0 曾經咁做但實際無效）。
+  // 改用 MutationObserver 監察 #voucherListBody：任何重繪後自動補上 📎 按鈕。
   try{
-    if(TG.renderVoucherList && TG.attachmentButtonHTML && TG.bindAttachmentButtons){
-      var _origRenderVoucherList = TG.renderVoucherList;
-      TG.renderVoucherList = function(){
-        _origRenderVoucherList();
+    if(TG.attachmentButtonHTML && TG.openAttachmentList){
+      var decorating = false;
+      var decorateVoucherList = function(){
         try{
           var body = document.getElementById('voucherListBody');
           if(!body) return;
           var rows = body.querySelectorAll('tr');
           for(var i = 0; i < rows.length; i++){
             var row = rows[i];
+            if(row.querySelector('.attachment-btn')) continue; // 呢行已處理
             var editBtn = row.querySelector('.edit-voucher');
             if(!editBtn) continue;
             var idx = Number(editBtn.getAttribute('data-index'));
             if(isNaN(idx)) continue;
             var btnHtml = TG.attachmentButtonHTML(idx);
-            if(!btnHtml) continue;
-            // 加到 Voucher 號嗰格（第二欄）
-            var voucherCell = row.querySelectorAll('td')[1];
-            if(voucherCell && voucherCell.querySelector('b') && !voucherCell.querySelector('.attachment-btn')){
-              voucherCell.querySelector('b').insertAdjacentHTML('afterend', btnHtml);
+            if(!btnHtml) continue; // 無附件唔加
+            var cells = row.querySelectorAll('td');
+            var b = cells.length > 1 && cells[1].querySelector('b');
+            if(!b) continue;
+            b.insertAdjacentHTML('afterend', btnHtml);
+            var newBtn = cells[1].querySelector('.attachment-btn');
+            if(newBtn){
+              // 只綁新加嘅按鈕，唔重綁舊嘅（避免重複 listener）
+              (function(index, btn){
+                btn.addEventListener('click', function(){ TG.openAttachmentList(index); });
+              })(idx, newBtn);
             }
           }
-          TG.bindAttachmentButtons(body);
         }catch(e){ console.error('[desktop] voucher list attachment patch failed:', e); }
       };
-      // 初次渲染都 patch
-      try{ TG.renderVoucherList(); }catch(e){}
+      var voucherListBody = document.getElementById('voucherListBody');
+      if(voucherListBody){
+        var voucherListObs = new MutationObserver(function(){
+          if(decorating) return;
+          decorating = true;
+          try{ decorateVoucherList(); }finally{ decorating = false; }
+        });
+        voucherListObs.observe(voucherListBody, { childList: true, subtree: true });
+        decorateVoucherList(); // 初次渲染都 patch
+      }
     }
-  }catch(e){ console.error('[desktop] wrap renderVoucherList failed:', e); }
+  }catch(e){ console.error('[desktop] voucher list attachment observer failed:', e); }
 
   // 工具欄 JSON 還原（app 原生 modal）完成後：無論 dbWriteEnabled 係咩狀態，
   // 只要有數據就直接寫庫。唔依賴 debounced persist，確保一定寫入。
@@ -845,6 +870,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.22.1', '修復兩個 v3.22.0 問題：(1) 匯入流程靜默丟數據——debounced 寫庫同匯入嘅直接寫庫重疊，第二次 transaction 失敗但 UI 照報成功，寫庫而家排隊執行唔再重疊；(2) voucher 列表 📎 按鈕實際無顯示——舊實現 wrap 咗無人呼叫嘅橋接函數，改用 MutationObserver，任何重繪（入賬／匯入／還原／搜尋）後自動補上按鈕。'],
   ['3.22.0', 'Voucher Excel 匯入支援附件：第 13 欄填檔案路徑（; 分隔），匯入自動讀檔入庫；voucher 列表加 📎 附件按鈕。'],
   ['3.21.5', '匯入去重：accounts／vouchers／invoices 重複時保留最後一筆，唔再爆 UNIQUE 錯誤；side 缺失自動推斷。'],
   ['3.21.5', '修復設置 JSON 匯入寫庫失敗：備份科目缺 side 時由類別自動推斷（資產/成本/費用=借方，其餘=貸方），唔再成個 transaction rollback 令表預覽全 0。'],

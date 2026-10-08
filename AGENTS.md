@@ -109,4 +109,6 @@ node scripts/smoke-desktop.cjs
 - v3.20.0：設置加「附件管理」（統計／列表／匯出全部／刪舊備份）＋「MCP 服務」（一鍵複製 Codex 設定）。
 - v3.21.0：MCP voucher 錄入（create_voucher 驗證後入 pending_vouchers，桌面版一鍵匯入；手寫單識別流程見 mcp-server/VOUCHER_ENTRY.md）。
 - v3.21.1：修復設置深色模式文字唔可見（改用 --ink／--line 變量）。
-- v3.21.2：修復 voucher 簽名列第三格爆出容器（改固定三欄 minmax(0,1fr)；手機版單欄覆蓋一併修）。（create_voucher 驗證後入 pending_vouchers，桌面版一鍵匯入；手寫單識別流程見 mcp-server/VOUCHER_ENTRY.md）。
+- v3.21.2：修復 voucher 簽名列第三格爆出容器（改固定三欄 minmax(0,1fr)；手機版單欄覆蓋一併修）。
+- v3.22.0：Voucher Excel 匯入支援附件（範本第 13 欄檔案路徑；匯入自動讀檔入庫）；voucher 列表 📎 附件檢視。
+- v3.22.1：修兩個 v3.22.0 問題——(1) persist 加互斥排隊（debounced 寫庫曾同匯入寫庫重疊致靜默丟數據）；(2) voucher 列表 📎 改用 MutationObserver 補按鈕（舊 wrap 包咗無人呼叫嘅橋接函數）。專項驗收 scripts/accept-v322-attachments.cjs（14 項）＋ smoke 65/65。

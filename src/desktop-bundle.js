@@ -3164,7 +3164,7 @@
     return { addedAccounts, skippedAccounts, setOpening, openingErrors };
   }
   var bridge = {
-    desktopVersion: "3.22.0",
+    desktopVersion: "3.22.1",
     createBackupPayload,
     validateBackup,
     prepareRestore,
@@ -3188,6 +3188,7 @@
     renderVoucherList,
     attachmentButtonHTML,
     bindAttachmentButtons,
+    openAttachmentList,
     setVoucherAttachments: (no, atts) => {
       const v = store.vouchers.find((x) => x.no === no);
       if (!v) return false;
