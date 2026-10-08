@@ -144,7 +144,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   // A0 前置：版本＋財年
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('A0 badge 係 v3.23.0', badge === 'v3.23.0核心 v3.15.1', String(badge));
+  check('A0 badge 係 v3.24.1', badge === 'v3.24.1核心 v3.15.1', String(badge));
   const fys = await page.evaluate(() => window.__TG__.fiscalYears());
   const openFy = (fys || []).find((f) => f.from <= '2026-10-08' && '2026-10-08' <= f.to);
   check('A0 已有財年涵蓋測試日期', !!openFy, JSON.stringify((fys || []).map((f) => f.key)));
