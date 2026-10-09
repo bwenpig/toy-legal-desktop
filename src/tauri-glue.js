@@ -285,6 +285,7 @@ async function migrateAttachmentsToDb(){
 
 /* ---------- 4. 持久化（debounced + hash 去重，單一 transaction） ---------- */
 var lastStableHash = null, persistTimer = null, dbWriteEnabled = true;
+var currentCompanyName = ''; // v3.25.0：當前數據庫嘅公司名（存 app_state.company_name）
 function stablePayloadString(payload){
   var d = payload.data || {};
   return JSON.stringify([d.vouchers, d.accounts, d.openingBalances, d.openingInvoiceDetails,
@@ -327,6 +328,12 @@ function persistNow(){
 async function persistNowInner(){
   try{
     var payload = await TG.createBackupPayload();
+    // v3.25.0：注入公司名（桌面版獨有，web BackupSettings 無此欄）
+    try{
+      if(!payload.data) payload.data = {};
+      if(!payload.data.settings) payload.data.settings = {};
+      payload.data.settings.companyName = currentCompanyName || '';
+    }catch(e){}
     var h = strHash(stablePayloadString(payload));
     if(h === lastStableHash){ return; }
     // 空白賬套（0 科目）唔寫庫：app 自身 validateBackup 要求至少一個科目，
@@ -522,14 +529,50 @@ async function loadAppStateFromDb(init, isStartup){
     var prepared = await TG.prepareRestore(dbPayload);
     TG.applyPreparedRestore(prepared.prepared);
     lastStableHash = strHash(stablePayloadString(dbPayload));
+    // v3.25.0：讀公司名；空嘅話登入後提示補錄
+    try{
+      currentCompanyName = String((dbPayload.data && dbPayload.data.settings && dbPayload.data.settings.companyName) || '');
+    }catch(e){ currentCompanyName = ''; }
     setStatus(init.needsMigration ? '數據庫已升級到 v3，本機賬套已載入' : '已載入本機賬套');
+    updateCompanyNameUI();
+    if(!currentCompanyName){
+      setTimeout(promptCompanyName, 800);
+    }
   }else{
     // v2 表係空（唔應該發生）：空白起步
     TG.blankStart();
     lastStableHash = null;
+    currentCompanyName = '';
     await persistNow();
     setStatus('已建立本機賬套（空白）');
+    updateCompanyNameUI();
+    setTimeout(promptCompanyName, 800);
   }
+}
+
+/* v3.25.0：公司名補錄／修改 */
+function promptCompanyName(){
+  // 自動化測試（headless）跳過 prompt，唔好 block
+  try{ if(navigator.webdriver) return; }catch(e){}
+  var name = window.prompt('請輸入公司名稱（將顯示喺工具欄同匯出文件）：', currentCompanyName || '');
+  if(name === null) return; // 取消
+  name = String(name).trim();
+  if(!name){
+    // 吉名唔俾過，再問
+    setTimeout(promptCompanyName, 300);
+    return;
+  }
+  setCompanyName(name);
+}
+async function setCompanyName(name){
+  currentCompanyName = String(name).trim();
+  updateCompanyNameUI();
+  lastStableHash = null; // 強制下次 persist 寫入
+  try{ await persistNow(); }catch(e){}
+}
+function updateCompanyNameUI(){
+  var el = document.getElementById('tgCompanyName');
+  if(el) el.textContent = currentCompanyName || '（未設定公司名）';
 }
 
 /* 讀取失敗後：俾個掣手動恢復自動儲存（用戶已用 JSON 還原好之後撳） */
@@ -599,6 +642,33 @@ function injectDesktopUI(){
   wrap.appendChild(mk('tgVoucherImportTb', '匯入 Voucher', '從資料夾匯入 Voucher Excel＋附件', function(){ onImportVoucherExcel(true); }));
   wrap.appendChild(mk('tgDownloadTemplate', '下載科目範本', '下載 Excel 匯入範本（科目表＋期初數）', downloadImportTemplate));
   wrap.appendChild(mk('tgImportExcel', '匯入科目 Excel', '從 Excel 匯入科目表＋期初數', importExcelData));
+  // v3.25.0：公司名顯示＋修改
+  var coWrap = document.createElement('span');
+  coWrap.style.cssText = 'display:inline-flex;align-items:center;gap:6px;margin-left:8px;padding:4px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);';
+  coWrap.title = '當前數據庫嘅公司';
+  var coLabel = document.createElement('span');
+  coLabel.style.cssText = 'font-size:11px;color:var(--muted);';
+  coLabel.textContent = '公司：';
+  var coName = document.createElement('b');
+  coName.id = 'tgCompanyName';
+  coName.style.cssText = 'font-size:13px;';
+  coName.textContent = '（未設定）';
+  var coEdit = document.createElement('button');
+  coEdit.className = 'btn'; coEdit.type = 'button';
+  coEdit.style.cssText = 'padding:3px 8px;font-size:11px;';
+  coEdit.textContent = '修改';
+  coEdit.title = '修改當前數據庫嘅公司名';
+  coEdit.addEventListener('click', function(){
+    var name = window.prompt('請輸入公司名稱：', currentCompanyName || '');
+    if(name === null) return;
+    name = String(name).trim();
+    if(name) setCompanyName(name);
+  });
+  coWrap.appendChild(coLabel);
+  coWrap.appendChild(coName);
+  coWrap.appendChild(coEdit);
+  wrap.appendChild(coWrap);
+  var ver = document.createElement('span');
   var ver = document.createElement('span');
   ver.style.cssText = 'font-size:11px;color:#999;align-self:center;margin-left:4px;';
   ver.textContent = '桌面版 v' + TG.desktopVersion;
@@ -641,8 +711,10 @@ function titleBlock(label, en){
   try{ fy = TG.fiscalLabel(); }catch(e){}
   var period = '';
   try{ period = TG.reportPeriodLabel(); }catch(e){}
+  // v3.25.0：用當前公司名（未設定就用預設）
+  var co = currentCompanyName || 'Toys Gallery International Limited';
   return [
-    ['Toys Gallery International Limited — ' + label + ' ' + en],
+    [co + ' — ' + label + ' ' + en],
     ['財政年度 ' + fy + (period ? ' · 月份 ' + period : ' · 全年') + ' · 匯出時間 ' + new Date().toLocaleString('zh-HK')],
     []
   ];
@@ -908,6 +980,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.25.0', '新增公司名：存 app_state kv 表；空庫登入提示補錄；工具欄顯示＋修改；匯出報表／Voucher 帶公司名。'],
   ['3.24.2', '修復匯入附件對應錯位（改用 voucherNo→路徑映射）；匯出 Excel 報表改為 zip（含 Journal 對應月份附件，按 voucher 號分目錄）。'],
   ['3.24.1', '修復從資料夾匯入 Voucher 無反應：dialog 加 try-catch＋錯誤提示；空資料夾／冇 Excel 會有明確提示。'],
   ['3.24.0', '工具欄精簡：移除下載／複製／還原備份＋匯入 JSON；新增下載 Voucher 範本（含科目下拉選單）＋從資料夾匯入 Voucher；科目範本保留。'],
@@ -1852,8 +1925,9 @@ function openVoucherExportDialog(){
   });
 }
 function voucherExpTitleRows(rangeLabel){
+  var co = currentCompanyName || 'Toys Gallery International Limited';
   return [
-    ['Toys Gallery International Limited — Voucher 匯出'],
+    [co + ' — Voucher 匯出'],
     ['範圍 ' + rangeLabel + ' · 匯出時間 ' + new Date().toLocaleString('zh-HK')],
     []
   ];

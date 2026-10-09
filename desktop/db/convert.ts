@@ -498,6 +498,8 @@ async function writeAllTables(db: DbPort, data: BackupData): Promise<TableCounts
   await putState('last_voucher_dates', settings.lastVoucherDates ?? {});
   await putState('report_state', settings.reportState ?? {});
   await putState('report', settings.report ?? '');
+  // v3.25.0：公司名（桌面版；web BackupSettings 無此欄，用 any 存取）
+  await putState('company_name', (settings as unknown as Record<string, unknown>).companyName ?? '');
   await putState('current_route', settings.currentRoute ?? '');
   await putState('editing_index', settings.editingIndex ?? null);
   await putState('working_voucher', data.workingVoucher ?? null);
@@ -804,6 +806,8 @@ export async function loadPayload(db: DbPort): Promise<BackupPayload | null> {
     report: asString(state.get('report')),
     currentRoute: asString(state.get('current_route')),
     editingIndex: (editingIndexRaw == null ? null : Number(editingIndexRaw)) as unknown as number,
+    // v3.25.0：公司名（桌面版獨有）
+    companyName: asString(state.get('company_name')),
   } as BackupSettings;
   const workingVoucherRaw = state.get('working_voucher');
   const workingVoucher: Voucher | null =

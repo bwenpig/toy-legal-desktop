@@ -560,6 +560,7 @@ CREATE TABLE IF NOT EXISTS pending_vouchers (
     await putState("last_voucher_dates", settings.lastVoucherDates ?? {});
     await putState("report_state", settings.reportState ?? {});
     await putState("report", settings.report ?? "");
+    await putState("company_name", settings.companyName ?? "");
     await putState("current_route", settings.currentRoute ?? "");
     await putState("editing_index", settings.editingIndex ?? null);
     await putState("working_voucher", data.workingVoucher ?? null);
@@ -812,7 +813,9 @@ CREATE TABLE IF NOT EXISTS pending_vouchers (
       reportState: asObject(state.get("report_state")),
       report: asString(state.get("report")),
       currentRoute: asString(state.get("current_route")),
-      editingIndex: editingIndexRaw == null ? null : Number(editingIndexRaw)
+      editingIndex: editingIndexRaw == null ? null : Number(editingIndexRaw),
+      // v3.25.0：公司名（桌面版獨有）
+      companyName: asString(state.get("company_name"))
     };
     const workingVoucherRaw = state.get("working_voucher");
     const workingVoucher = workingVoucherRaw == null ? null : workingVoucherRaw;

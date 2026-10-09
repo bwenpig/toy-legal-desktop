@@ -1,6 +1,6 @@
 [package]
 name = "toys-gallery-accounting"
-version = "3.24.2"
+version = "3.25.0"
 description = "Toys Gallery 會計系統 — Mac 桌面版"
 edition = "2021"
 rust-version = "1.77.2"
