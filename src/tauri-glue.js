@@ -550,19 +550,48 @@ async function loadAppStateFromDb(init, isStartup){
   }
 }
 
-/* v3.25.0：公司名補錄／修改 */
-function promptCompanyName(){
-  // 自動化測試（headless）跳過 prompt，唔好 block
-  try{ if(navigator.webdriver) return; }catch(e){}
-  var name = window.prompt('請輸入公司名稱（將顯示喺工具欄同匯出文件）：', currentCompanyName || '');
-  if(name === null) return; // 取消
-  name = String(name).trim();
-  if(!name){
-    // 吉名唔俾過，再問
-    setTimeout(promptCompanyName, 300);
-    return;
+/* v3.25.0：公司名補錄／修改（v3.25.1：Tauri 唔支援 window.prompt，轉用自製 modal） */
+function companyNameModal(title, initial, onOk){
+  // 刪舊嘅
+  var old = document.getElementById('tgCompanyModal');
+  if(old) old.remove();
+  var overlay = document.createElement('div');
+  overlay.id = 'tgCompanyModal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  var box = document.createElement('div');
+  box.style.cssText = 'background:var(--surface,#fff);border:1px solid var(--line,#ddd);border-radius:12px;padding:24px;width:min(420px,90vw);box-shadow:0 8px 32px rgba(0,0,0,.25);';
+  box.innerHTML =
+    '<h3 style="margin:0 0 8px;font-size:16px;">' + escHtml(title) + '</h3>' +
+    '<p style="margin:0 0 12px;font-size:12px;color:var(--muted,#666);">將顯示喺工具欄同匯出文件，用嚟識別數據係邊間公司。</p>' +
+    '<input id="tgCompanyInput" type="text" style="width:100%;padding:10px 12px;font-size:14px;border:1px solid var(--line,#ccc);border-radius:8px;box-sizing:border-box;" placeholder="例如 ABC 玩具有限公司" value="' + escHtml(initial || '') + '">' +
+    '<p id="tgCompanyErr" style="margin:8px 0 0;font-size:12px;color:var(--bad,#c00);min-height:16px;"></p>' +
+    '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px;">' +
+    '<button id="tgCompanyCancel" class="btn" type="button">取消</button>' +
+    '<button id="tgCompanyOk" class="btn primary" type="button">確定</button>' +
+    '</div>';
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  var input = document.getElementById('tgCompanyInput');
+  var err = document.getElementById('tgCompanyErr');
+  function close(){ overlay.remove(); }
+  document.getElementById('tgCompanyCancel').addEventListener('click', close);
+  overlay.addEventListener('click', function(e){ if(e.target === overlay) close(); });
+  function submit(){
+    var v = String(input.value || '').trim();
+    if(!v){ err.textContent = '請輸入公司名稱'; input.focus(); return; }
+    close();
+    onOk(v);
   }
-  setCompanyName(name);
+  document.getElementById('tgCompanyOk').addEventListener('click', submit);
+  input.addEventListener('keydown', function(e){ if(e.key === 'Enter') submit(); });
+  setTimeout(function(){ input.focus(); input.select(); }, 50);
+}
+function promptCompanyName(){
+  // 自動化測試（headless）跳過，唔好 block
+  try{ if(navigator.webdriver) return; }catch(e){}
+  companyNameModal('請輸入公司名稱', currentCompanyName || '', function(name){
+    setCompanyName(name);
+  });
 }
 async function setCompanyName(name){
   currentCompanyName = String(name).trim();
@@ -659,10 +688,9 @@ function injectDesktopUI(){
   coEdit.textContent = '修改';
   coEdit.title = '修改當前數據庫嘅公司名';
   coEdit.addEventListener('click', function(){
-    var name = window.prompt('請輸入公司名稱：', currentCompanyName || '');
-    if(name === null) return;
-    name = String(name).trim();
-    if(name) setCompanyName(name);
+    companyNameModal('修改公司名稱', currentCompanyName || '', function(name){
+      setCompanyName(name);
+    });
   });
   coWrap.appendChild(coLabel);
   coWrap.appendChild(coName);
@@ -980,6 +1008,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.25.1', '修復「修改」公司名撳咗無反應：Tauri 唔支援 window.prompt，轉用自製輸入 modal（登入補錄同修改都用同一個）。'],
   ['3.25.0', '新增公司名：存 app_state kv 表；空庫登入提示補錄；工具欄顯示＋修改；匯出報表／Voucher 帶公司名。'],
   ['3.24.2', '修復匯入附件對應錯位（改用 voucherNo→路徑映射）；匯出 Excel 報表改為 zip（含 Journal 對應月份附件，按 voucher 號分目錄）。'],
   ['3.24.1', '修復從資料夾匯入 Voucher 無反應：dialog 加 try-catch＋錯誤提示；空資料夾／冇 Excel 會有明確提示。'],
