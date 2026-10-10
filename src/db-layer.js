@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS pending_vouchers (
 `;
 
   // web-src/version.ts
-  var APP_VERSION = "3.15.1";
+  var APP_VERSION = "3.15.2";
 
   // desktop/db/convert.ts
   function splitStatements(sql) {

@@ -1,7 +1,7 @@
 "use strict";
 (() => {
   // web-src/version.ts
-  var APP_VERSION = "3.15.1";
+  var APP_VERSION = "3.15.2";
 
   // web-src/money.ts
   var asCents = (n) => n;
@@ -591,9 +591,9 @@
   }
   var reconcileKey = (kind, party, month = store.reportState.month) => `${store.selectedFiscalKey}|${month?.key || "all"}|${kind}|${normalParty(party)}`;
   var periodMatches = (date) => store.reportState.month === null ? dateInFiscalYear2(date) : String(date).slice(0, 7) === store.reportState.month.key;
-  function currentReconcileState(kind, party, invoiceOutstanding, accountBalance2) {
-    const difference = invoiceOutstanding - Math.abs(accountBalance2), saved = store.reconciliationConfirmations[reconcileKey(kind, party)];
-    const confirmed = Boolean(saved && saved.invoiceOutstanding === invoiceOutstanding && saved.accountBalance === accountBalance2 && saved.difference === difference);
+  function currentReconcileState(kind, party, invoiceOutstanding, accountBalance3) {
+    const difference = invoiceOutstanding - Math.abs(accountBalance3), saved = store.reconciliationConfirmations[reconcileKey(kind, party)];
+    const confirmed = Boolean(saved && saved.invoiceOutstanding === invoiceOutstanding && saved.accountBalance === accountBalance3 && saved.difference === difference);
     return { difference, saved, confirmed, matched: difference === 0 };
   }
   function reconcileDraftMetrics() {
@@ -602,8 +602,8 @@
       paidByInvoice[p.invoiceNo] = (paidByInvoice[p.invoiceNo] || 0) + p.amount;
     });
     const invoiceOutstanding = store.reconcileInvoiceDraft.reduce((sum, item) => sum + Math.max(0, item.amount - (paidByInvoice[item.invoiceNo] || 0)), 0);
-    const account = store.accounts.find((a) => a.name === store.reconciliationContext.accountName), accountBalance2 = account ? accountSignedBalance(account) : 0;
-    return { invoiceOutstanding, accountBalance: accountBalance2, difference: invoiceOutstanding - Math.abs(accountBalance2) };
+    const account = store.accounts.find((a) => a.name === store.reconciliationContext.accountName), accountBalance3 = account ? accountSignedBalance(account) : 0;
+    return { invoiceOutstanding, accountBalance: accountBalance3, difference: invoiceOutstanding - Math.abs(accountBalance3) };
   }
   function updateReconcileSummary() {
     if (!store.reconciliationContext) return;
@@ -2427,6 +2427,100 @@
   renderFiscalYears();
   refreshFiscalScope();
 
+  // web-src/rollover.ts
+  function previewRollover(fromKey) {
+    const fromFy = store.fiscalYears.find((f) => f.key === fromKey);
+    if (!fromFy) return null;
+    const toStart = fromFy.start + 1;
+    const toLabel = "FY" + toStart + "/" + String(toStart + 1).slice(-2);
+    const accounts = [];
+    for (const a of store.accounts) {
+      if (!["\u8CC7\u7522", "\u8CA0\u50B5", "\u6B0A\u76CA"].includes(a.type)) continue;
+      const bal = accountBalance(a, fromFy);
+      if (bal === 0) continue;
+      accounts.push({ name: a.name, type: a.type, closing: bal });
+    }
+    const invoices = [];
+    const parties = /* @__PURE__ */ new Set();
+    for (const a of store.accounts) {
+      let kind = "";
+      let party = "";
+      if (a.name.startsWith("Accounts Receivable of ")) {
+        kind = "AR";
+        party = a.name.replace("Accounts Receivable of ", "");
+      } else if (a.name.startsWith("Accounts Payable of ")) {
+        kind = "AP";
+        party = a.name.replace("Accounts Payable of ", "");
+      }
+      if (!kind) continue;
+      parties.add(party);
+    }
+    const ctx2 = {
+      salesInvoices: store.salesInvoices,
+      purchaseInvoices: store.purchaseInvoices,
+      allocations: store.allocations,
+      openingBalances: store.openingBalances,
+      vouchers: store.vouchers,
+      accounts: store.accounts
+    };
+    for (const party of parties) {
+      for (const kind of ["AR", "AP"]) {
+        const acctName = (kind === "AR" ? "Accounts Receivable of " : "Accounts Payable of ") + party;
+        if (!store.accounts.some((a) => a.name === acctName)) continue;
+        try {
+          const invs = invoiceMatches2(kind, party, fromFy, ctx2);
+          for (const inv of invs) {
+            const total = inv[3];
+            const alloc = allocatedTotal2(kind, inv[1], fromFy, store.allocations);
+            const out = total - alloc;
+            if (out > 0) {
+              invoices.push({ kind, party, no: inv[1], date: inv[0], outstanding: out });
+            }
+          }
+        } catch (e) {
+        }
+      }
+    }
+    return {
+      fromLabel: fromFy.label,
+      toLabel,
+      accounts,
+      invoices,
+      invoiceParties: [...parties]
+    };
+  }
+  function executeRollover(fromKey, toKey) {
+    const preview = previewRollover(fromKey);
+    if (!preview) return { accounts: 0, invoices: 0 };
+    const toFy = store.fiscalYears.find((f) => f.key === toKey);
+    if (!toFy) return { accounts: 0, invoices: 0 };
+    let accCount = 0;
+    store.openingBalances[toKey] = store.openingBalances[toKey] || {};
+    for (const a of preview.accounts) {
+      const acct = store.accounts.find((x) => x.name === a.name);
+      if (!acct) continue;
+      const entry = acct.side === "dr" ? { debit: a.closing, credit: 0 } : { debit: 0, credit: a.closing };
+      store.openingBalances[toKey][a.name] = entry;
+      accCount++;
+    }
+    let invCount = 0;
+    for (const inv of preview.invoices) {
+      const row = [inv.date, inv.no, inv.party, inv.outstanding, "opening"];
+      if (inv.kind === "AR") {
+        if (!store.salesInvoices.some((x) => x[1] === inv.no)) {
+          store.salesInvoices.push(row);
+          invCount++;
+        }
+      } else {
+        if (!store.purchaseInvoices.some((x) => x[1] === inv.no)) {
+          store.purchaseInvoices.push(row);
+          invCount++;
+        }
+      }
+    }
+    return { accounts: accCount, invoices: invCount };
+  }
+
   // desktop/excel-rows.ts
   var dollars = (cents) => cents / 100;
   function buildReportRows(key) {
@@ -3221,103 +3315,19 @@
     renderKPIs();
     return { addedAccounts, skippedAccounts, setOpening, openingErrors, setInvoices, invoiceErrors, invoiceMismatch };
   }
-  function previewRollover(fromKey) {
-    const fromFy = store.fiscalYears.find((f) => f.key === fromKey);
-    if (!fromFy) return null;
-    const toStart = fromFy.start + 1;
-    const toLabel = "FY" + toStart + "/" + String(toStart + 1).slice(-2);
-    const accounts = [];
-    for (const a of store.accounts) {
-      if (!["\u8CC7\u7522", "\u8CA0\u50B5", "\u6B0A\u76CA"].includes(a.type)) continue;
-      const bal = accountBalance(a, fromFy);
-      if (bal === 0) continue;
-      accounts.push({ name: a.name, type: a.type, closing: bal });
-    }
-    const invoices = [];
-    const parties = /* @__PURE__ */ new Set();
-    for (const a of store.accounts) {
-      let kind = "";
-      let party = "";
-      if (a.name.startsWith("Accounts Receivable of ")) {
-        kind = "AR";
-        party = a.name.replace("Accounts Receivable of ", "");
-      } else if (a.name.startsWith("Accounts Payable of ")) {
-        kind = "AP";
-        party = a.name.replace("Accounts Payable of ", "");
-      }
-      if (!kind) continue;
-      parties.add(party);
-    }
-    const ctx2 = {
-      salesInvoices: store.salesInvoices,
-      purchaseInvoices: store.purchaseInvoices,
-      allocations: store.allocations,
-      openingBalances: store.openingBalances,
-      vouchers: store.vouchers,
-      accounts: store.accounts
-    };
-    for (const party of parties) {
-      for (const kind of ["AR", "AP"]) {
-        const acctName = (kind === "AR" ? "Accounts Receivable of " : "Accounts Payable of ") + party;
-        if (!store.accounts.some((a) => a.name === acctName)) continue;
-        try {
-          const invs = invoiceMatches2(kind, party, fromFy, ctx2);
-          for (const inv of invs) {
-            const total = inv[3];
-            const alloc = allocatedTotal2(kind, inv[1], fromFy, store.allocations);
-            const out = total - alloc;
-            if (out > 0) {
-              invoices.push({ kind, party, no: inv[1], date: inv[0], outstanding: out });
-            }
-          }
-        } catch (e) {
-        }
-      }
-    }
-    return {
-      fromLabel: fromFy.label,
-      toLabel,
-      accounts,
-      invoices,
-      invoiceParties: [...parties]
-    };
+  function previewRollover2(fromKey) {
+    return previewRollover(fromKey);
   }
-  function executeRollover(fromKey, toKey) {
-    const preview = previewRollover(fromKey);
-    if (!preview) return { accounts: 0, invoices: 0 };
-    const toFy = store.fiscalYears.find((f) => f.key === toKey);
-    if (!toFy) return { accounts: 0, invoices: 0 };
-    let accCount = 0;
-    store.openingBalances[toKey] = store.openingBalances[toKey] || {};
-    for (const a of preview.accounts) {
-      const acct = store.accounts.find((x) => x.name === a.name);
-      if (!acct) continue;
-      const entry = acct.side === "dr" ? { debit: a.closing, credit: 0 } : { debit: 0, credit: a.closing };
-      store.openingBalances[toKey][a.name] = entry;
-      accCount++;
-    }
-    let invCount = 0;
-    for (const inv of preview.invoices) {
-      const row = [inv.date, inv.no, inv.party, inv.outstanding, "opening"];
-      if (inv.kind === "AR") {
-        if (!store.salesInvoices.some((x) => x[1] === inv.no)) {
-          store.salesInvoices.push(row);
-          invCount++;
-        }
-      } else {
-        if (!store.purchaseInvoices.some((x) => x[1] === inv.no)) {
-          store.purchaseInvoices.push(row);
-          invCount++;
-        }
-      }
-    }
+  function executeRollover2(fromKey, toKey) {
+    const res = executeRollover(fromKey, toKey);
     renderAccounts();
     renderReport();
     renderKPIs();
-    return { accounts: accCount, invoices: invCount };
+    return res;
   }
   var bridge = {
-    desktopVersion: "3.26.3",
+    desktopVersion: "3.26.4",
+    coreVersion: APP_VERSION,
     createBackupPayload,
     validateBackup,
     prepareRestore,
@@ -3339,8 +3349,8 @@
     importVouchers,
     nextVoucherNumberFor,
     renderVoucherList,
-    previewRollover,
-    executeRollover,
+    previewRollover: previewRollover2,
+    executeRollover: executeRollover2,
     /** v3.25.2：按編號攞 voucher（操作日誌用） */
     getVoucher: (no) => {
       const v = store.vouchers.find((x) => x.no === no);
@@ -3428,7 +3438,7 @@
     }
   };
   window.__TG__ = bridge;
-  if (APP_VERSION !== "3.15.1") {
+  if (APP_VERSION !== "3.15.2") {
     console.error("[desktop] APP_VERSION mismatch:", APP_VERSION);
   }
 })();

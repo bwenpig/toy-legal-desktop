@@ -33,6 +33,8 @@ import { renderVoucherList, renderInvoiceNumberList, attachmentButtonHTML, bindA
 import { renderLedger, accountBalance } from '../web-src/ledger';
 import { navigate, renderStaffNames } from '../web-src/ui';
 import { dollarsToCents, toCents } from '../web-src/money';
+import { previewRollover as corePreviewRollover, executeRollover as coreExecuteRollover } from '../web-src/rollover';
+import type { RolloverPreview, RolloverAccountPreview, RolloverInvoicePreview } from '../web-src/rollover';
 import type { Cents } from '../web-src/money';
 import type {
   BackupData,
@@ -263,140 +265,26 @@ function importExcelData(imp: {
   return { addedAccounts, skippedAccounts, setOpening, openingErrors, setInvoices, invoiceErrors, invoiceMismatch };
 }
 
-/* ---------- 年結自動結轉（桌面版獨有，v3.26.0） ----------
+/* ---------- 年結自動結轉（v3.26.0 桌面首發，v3.15.2 起搬入內核） ----------
+ * 會計邏輯喺 web-src/rollover.ts（內核），呢度只係薄 wrapper＋UI refresh。
  * previewRollover(fromKey): 計出上年 closing，預覽下年 opening
  * executeRollover(fromKey, toKey): 寫入下年期初數＋期初發票
- * 規則：
- * - 資產／負債／權益：closing → opening（按科目類別自動判斷，新科目自動包埋）
- * - AR/AP：未找清嘅發票逐張帶過去（唔係得個總數）
- * - 收入／成本／費用：唔帶，歸零
  */
-export interface RolloverAccountPreview {
-  name: string;
-  type: string;
-  closing: number; // 分
-}
-export interface RolloverInvoicePreview {
-  kind: 'AR' | 'AP';
-  party: string;
-  no: string;
-  date: string;
-  outstanding: number; // 分
-}
-export interface RolloverPreview {
-  fromLabel: string;
-  toLabel: string;
-  accounts: RolloverAccountPreview[];
-  invoices: RolloverInvoicePreview[];
-  invoiceParties: string[];
-}
+// Rollover interfaces 由內核（web-src/rollover.ts）提供，此處 re-export 俾 bridge 用
+export type { RolloverPreview, RolloverAccountPreview, RolloverInvoicePreview };
 
+// 年結轉賬：會計邏輯喺內核（web-src/rollover.ts），呢度係薄 wrapper（加 UI refresh）
 export function previewRollover(fromKey: string): RolloverPreview | null {
-  const fromFy = store.fiscalYears.find((f) => f.key === fromKey);
-  if (!fromFy) return null;
-  const toStart = fromFy.start + 1;
-  const toLabel = 'FY' + toStart + '/' + String(toStart + 1).slice(-2);
-
-  const accounts: RolloverAccountPreview[] = [];
-  for (const a of store.accounts) {
-    if (!['資產', '負債', '權益'].includes(a.type)) continue;
-    const bal = accountBalance(a, fromFy);
-    if (bal === 0) continue;
-    accounts.push({ name: a.name, type: a.type, closing: bal });
-  }
-
-  // AR/AP 未找清發票：用 invoiceMatches 搵出嚟，計 outstanding
-  const invoices: RolloverInvoicePreview[] = [];
-  const parties = new Set<string>();
-  for (const a of store.accounts) {
-    let kind: 'AR' | 'AP' | '' = '';
-    let party = '';
-    if (a.name.startsWith('Accounts Receivable of ')) {
-      kind = 'AR';
-      party = a.name.replace('Accounts Receivable of ', '');
-    } else if (a.name.startsWith('Accounts Payable of ')) {
-      kind = 'AP';
-      party = a.name.replace('Accounts Payable of ', '');
-    }
-    if (!kind) continue;
-    parties.add(party);
-  }
-  // 簡化：用現有 openingInvoiceDetails＋sales/purchaseInvoices 計 outstanding
-  // 實際用 allocation 記錄計每張單剩幾多
-  const ctx = {
-    salesInvoices: store.salesInvoices,
-    purchaseInvoices: store.purchaseInvoices,
-    allocations: store.allocations,
-    openingBalances: store.openingBalances,
-    vouchers: store.vouchers,
-    accounts: store.accounts,
-  };
-  for (const party of parties) {
-    for (const kind of ['AR', 'AP'] as const) {
-      const acctName = (kind === 'AR' ? 'Accounts Receivable of ' : 'Accounts Payable of ') + party;
-      if (!store.accounts.some((a) => a.name === acctName)) continue;
-      try {
-        const invs = invoiceMatches(kind, party, fromFy, ctx as any);
-        for (const inv of invs) {
-          const total = inv[3] as number;
-          const alloc = allocatedTotal(kind, inv[1], fromFy, store.allocations);
-          const out = total - alloc;
-          if (out > 0) {
-            invoices.push({ kind, party, no: inv[1], date: inv[0], outstanding: out });
-          }
-        }
-      } catch (e) { /* 忽略 */ }
-    }
-  }
-
-  return {
-    fromLabel: fromFy.label,
-    toLabel,
-    accounts,
-    invoices,
-    invoiceParties: [...parties],
-  };
+  return corePreviewRollover(fromKey);
 }
 
 export function executeRollover(fromKey: string, toKey: string): { accounts: number; invoices: number } {
-  const preview = previewRollover(fromKey);
-  if (!preview) return { accounts: 0, invoices: 0 };
-  const toFy = store.fiscalYears.find((f) => f.key === toKey);
-  if (!toFy) return { accounts: 0, invoices: 0 };
-
-  let accCount = 0;
-  store.openingBalances[toKey] = store.openingBalances[toKey] || {};
-  for (const a of preview.accounts) {
-    const acct = store.accounts.find((x) => x.name === a.name);
-    if (!acct) continue;
-    // 按科目借貸方向寫入
-    const entry = acct.side === 'dr'
-      ? { debit: a.closing as any, credit: 0 as any }
-      : { debit: 0 as any, credit: a.closing as any };
-    store.openingBalances[toKey][a.name] = entry;
-    accCount++;
-  }
-
-  let invCount = 0;
-  for (const inv of preview.invoices) {
-    const row: InvoiceRow = [inv.date, inv.no, inv.party, inv.outstanding as any, 'opening'];
-    if (inv.kind === 'AR') {
-      if (!store.salesInvoices.some((x) => x[1] === inv.no)) {
-        store.salesInvoices.push(row);
-        invCount++;
-      }
-    } else {
-      if (!store.purchaseInvoices.some((x) => x[1] === inv.no)) {
-        store.purchaseInvoices.push(row);
-        invCount++;
-      }
-    }
-  }
-
+  const res = coreExecuteRollover(fromKey, toKey);
+  // UI refresh（桌面端職責）
   renderAccounts();
   renderReport();
   renderKPIs();
-  return { accounts: accCount, invoices: invCount };
+  return res;
 }
 
 declare global {
@@ -407,6 +295,7 @@ declare global {
 
 export interface DesktopBridge {
   desktopVersion: string;
+  coreVersion: string;
   createBackupPayload: typeof createBackupPayload;
   validateBackup: typeof validateBackup;
   prepareRestore: typeof prepareRestore;
@@ -463,7 +352,8 @@ export interface DesktopBridge {
 
 /** 桌面版 bridge（tauri-glue.js 經呢度攞 app 功能）。 */
 const bridge: DesktopBridge = {
-  desktopVersion: '3.26.3',
+  desktopVersion: '3.26.4',
+  coreVersion: APP_VERSION,
   createBackupPayload,
   validateBackup,
   prepareRestore,
@@ -578,6 +468,6 @@ const bridge: DesktopBridge = {
 window.__TG__ = bridge;
 
 // 保證 APP_VERSION 同 web-src 一致（build script 亦會 assert）
-if (APP_VERSION !== '3.15.1') {
+if (APP_VERSION !== '3.15.2') {
   console.error('[desktop] APP_VERSION mismatch:', APP_VERSION);
 }

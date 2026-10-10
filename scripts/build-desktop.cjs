@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * 桌面版 build pipeline（3.15.1）。
+ * 桌面版 build pipeline（內核 3.15.2）。
  *
  * 1. 由 hk-legal-dora/src 複製 TS 源碼到 web-src/（唯讀來源，一字不改；
  *    assert APP_VERSION，避免抄錯分支）。
@@ -27,7 +27,7 @@ const ROOT = path.resolve(__dirname, '..');
 const HK_SRC = process.env.TG_HK_SRC || '/home/hatch/workspace/hk-legal-dora/src';
 const HK_DIST = process.env.TG_HK_DIST || '/home/hatch/workspace/hk-legal-dora/dist/index.html';
 const WEB_SRC = path.join(ROOT, 'web-src');
-const EXPECTED_VERSION = '3.15.1';
+const EXPECTED_VERSION = '3.15.2';
 
 function assert(cond, msg) {
   if (!cond) { console.error('BUILD FAILED: ' + msg); process.exit(1); }

@@ -1,4 +1,5 @@
-/* ---------- v3.26.0：年結自動結轉（桌面獨有） ----------
+/* ---------- v3.26.0：年結自動結轉 UI（桌面端） ----------
+ * 會計邏輯已搬入內核 web-src/rollover.ts（v3.15.2+），呢度只係 UI：掣＋modal＋自動彈出。
  * 喺財年管理加「年結轉賬」掣：揀來源財年 → 預覽 → 確認寫入下年期初
  */
 (function(){
@@ -217,7 +218,7 @@ function injectSettingsView(){
   div.hidden = true;
   div.innerHTML =
     '<div class="tgset-top"><div><h2>⚙ 桌面版設置</h2>' +
-    '<div class="tgset-ver">桌面版 <strong>v' + escHtml(TG.desktopVersion) + '</strong> ＋ Web 核心 <strong>v3.15.1</strong></div></div>' +
+    '<div class="tgset-ver">桌面版 <strong>v' + escHtml(TG.desktopVersion) + '</strong> ＋ Web 核心 <strong>v' + escHtml(TG.coreVersion || '3.15.2') + '</strong></div></div>' +
     '<button class="btn" id="tgSettingsClose" type="button">✕ 關閉</button></div>' +
     '<div class="tgset-changelog"><strong>桌面版更新日誌</strong><ul>' + changelogHtml + '</ul></div>' +
     '<section class="tgset-sec"><h3>數據位置</h3>' +
