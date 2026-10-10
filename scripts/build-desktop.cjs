@@ -108,6 +108,19 @@ if (!process.argv.includes('--no-db')) {
   console.log('> 跳過 db-layer（--no-db）');
 }
 
+// ---- 2.5 合併 glue 模組 ----
+console.log('> 合併 src/glue/*.js → src/tauri-glue.js');
+{
+  const glueDir = path.join(ROOT, 'src', 'glue');
+  const files = fs.readdirSync(glueDir).filter(f => f.endsWith('.js')).sort();
+  let combined = '';
+  for (const f of files) {
+    combined += fs.readFileSync(path.join(glueDir, f), 'utf8') + '\n';
+  }
+  fs.writeFileSync(path.join(ROOT, 'src', 'tauri-glue.js'), combined);
+  console.log('  合併 ' + files.length + ' 個模組，共 ' + combined.split('\n').length + ' 行');
+}
+
 // ---- 3. HTML 殼 ----
 console.log('> 組裝 src/index.html（dist HTML 殼＋desktop scripts）');
 assert(fs.existsSync(HK_DIST), 'hk-legal-dora/dist/index.html 不存在：' + HK_DIST);

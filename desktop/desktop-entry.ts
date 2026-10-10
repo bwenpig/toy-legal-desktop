@@ -463,7 +463,7 @@ export interface DesktopBridge {
 
 /** 桌面版 bridge（tauri-glue.js 經呢度攞 app 功能）。 */
 const bridge: DesktopBridge = {
-  desktopVersion: '3.26.2',
+  desktopVersion: '3.26.3',
   createBackupPayload,
   validateBackup,
   prepareRestore,

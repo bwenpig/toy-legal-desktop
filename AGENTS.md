@@ -114,3 +114,21 @@ node scripts/smoke-desktop.cjs
 - v3.24.0：工具欄精簡（移除備份三掣＋匯入 JSON；加 Voucher 範本下拉＋資料夾匯入）。
 - v3.23.0：Voucher Excel 匯入改為資料夾模式——揀一個資料夾（內含 Excel＋附件），M 欄填附件檔名（; 分隔），系統自動喺資料夾內搵檔匯入；smoke 更新支援 read_dir mock。
 - v3.22.1：修兩個 v3.22.0 問題——(1) persist 加互斥排隊（debounced 寫庫曾同匯入寫庫重疊致靜默丟數據）；(2) voucher 列表 📎 改用 MutationObserver 補按鈕（舊 wrap 包咗無人呼叫嘅橋接函數）。專項驗收 scripts/accept-v322-attachments.cjs（14 項）＋ smoke 65/65。
+
+## 重構（2026-10-10 v3.26.3）
+- `src/tauri-glue.js`（2534 行神檔案）已拆成 `src/glue/` 12 個模組：
+  - 00-header.js：檔案頭
+  - 10-infra.js：環境／SQL／Dialog／config／附件基礎／持久化／op_logs表
+  - 20-startup.js：啟動＋公司名
+  - 30-toolbar.js：工具欄 UI
+  - 40-backup.js：JSON 備份
+  - 50-excel-export.js：Excel 匯出
+  - 60-excel-import.js：Excel 匯入（科目／期初／發票）
+  - 70-rollover.js：年結轉賬
+  - 80-settings.js：桌面設置（數據位置／DB預覽／附件管理／MCP／待匯入）
+  - 90-voucher-import.js：Voucher Excel 匯入
+  - 95-voucher-export.js：Voucher 匯出
+  - 99-boot.js：啟動
+- Build 時自動合併（scripts/build-desktop.cjs 2.5 步），`src/tauri-glue.js` 係生成物
+- 改功能時改對應模組，唔好直接改 tauri-glue.js（會被覆蓋）
+- Baseline tag：`baseline-v3.26.2`（重構前功能對比基準）

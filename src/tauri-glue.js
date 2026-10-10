@@ -27,6 +27,7 @@
 (function(){
 'use strict';
 
+
 /* ---------- 0. 環境偵測 ---------- */
 var IS_TAURI = !!(window.__TAURI_INTERNALS__ || window.__TAURI__);
 if(!IS_TAURI) return;                       // 瀏覽器開呢個檔：當普通 web 版跑
@@ -434,6 +435,7 @@ async function writeOpLog(entry){
     );
   }catch(e){ console.error('[desktop] 操作日誌寫入失敗：', e); }
 }
+
 /* ---------- 5. 啟動 ---------- */
 async function startup(){
   try{
@@ -870,6 +872,7 @@ function showResumeSaveButton(){
   bar.appendChild(b);
 }
 
+
 /* ---------- 6. 桌面版 UI（backup-tools 欄） ---------- */
 function injectDesktopUI(){
   /* 桌面獨有：工具條收起／展開——收起時只顯示財政年度列 */
@@ -953,6 +956,7 @@ function injectDesktopUI(){
   bar.appendChild(wrap);
 }
 
+
 /* ---------- 7. JSON 備份匯入（web → 桌面遷移） ---------- */
 async function importJSONBackup(){
   try{
@@ -970,6 +974,7 @@ async function importJSONBackup(){
     setStatus('匯入失敗：' + (e.message || e));
   }
 }
+
 
 /* ---------- 8. Excel 匯出（9 份報表） ---------- */
 var REPORT_SHEETS = [
@@ -1166,6 +1171,7 @@ async function exportExcelReports(){
   }
 }
 
+
 /* ---------- 9. Excel 匯入：科目表＋期初數 ---------- */
 var IMPORT_TYPES = ['資產', '負債', '權益', '收入', '成本', '費用'];
 function downloadImportTemplate(){
@@ -1283,9 +1289,7 @@ async function importExcelData(){
   }
 }
 
-/* ---------- 9b. 桌面設置（桌面獨有 view；web-src 零改動） ----------
- * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
- * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
+
 /* ---------- v3.26.0：年結自動結轉（桌面獨有） ----------
  * 喺財年管理加「年結轉賬」掣：揀來源財年 → 預覽 → 確認寫入下年期初
  */
@@ -1617,6 +1621,10 @@ async function refreshSettingsDbPath(){
     customDbPath ? '自訂位置（tg-config.json）' : '預設位置';
 }
 
+
+/* ---------- 9b. 桌面設置（桌面獨有 view；web-src 零改動） ----------
+ * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
+ * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 /* ---------- 9c. 數據位置切換 ---------- */
 var pendingSwitch = null; // {targetPath, exists, curPath, isReset}
 function normPath(p){ return String(p).replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase(); }
@@ -2128,6 +2136,7 @@ async function doImportJson(){
   }
 }
 
+
 /* ---------- 9f. Voucher Excel 批量匯入（設置畫面） ---------- */
 var pendingVoucherImport = null; // ParsedVoucherImport
 var pendingVoucherExcelPath = null; // 匯入資料夾路徑（v3.23.0 起改為資料夾模式）
@@ -2377,6 +2386,7 @@ async function doImportVouchers(){
   }
 }
 
+
 /* ---------- 9i. Voucher 批量匯出 Excel（俾會計師） ----------
  * 入口：voucher 列表 card-head 注入「匯出 Voucher Excel」掣 → 範圍 dialog
  * （財年＋月份）→ 總表＋明細 xlsx＋附件打包 zip。
@@ -2518,6 +2528,7 @@ async function doVoucherExport(fyKey, fromMonth, toMonth){
   }
 }
 
+
 /* ---------- 10. 啟動 ---------- */
 if(document.readyState === 'loading')
   document.addEventListener('DOMContentLoaded', function(){ startup(); });
@@ -2532,3 +2543,4 @@ window.__TG_DESKTOP__ = {
 };
 
 })();
+
