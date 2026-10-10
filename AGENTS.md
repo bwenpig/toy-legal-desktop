@@ -64,6 +64,10 @@ scripts/
 ## 鐵律
 
 1. **web 版已凍結**（2026-10-10）：`web-src/` 允許修改；唔好掂公開 artifact／`hk-legal-dora` repo（佢哋凍結喺 v3.15.1）。
+2. **需求歸屬判斷**（2026-10-10 鐵律）：每個需求先判斷係「桌面端」定「會計邏輯內核」：
+   - **內核**（v3.15.x 軌）：借貸／過賬／FIFO／財年／報表計算／科目／發票邏輯 → 改 `web-src/`，內核版本遞增
+   - **桌面端**（v3.26.x 軌）：SQLite／Tauri原生／Excel檔案／附件／設置UI／MCP → 改 `src/glue/` 或 `desktop/`，桌面版本遞增
+   - 唔確定就問用戶，唔好自己做主。
 2. 每次改版（無論功能定純文字）：遞增桌面版本號 → `DESKTOP_CHANGELOG`（`src/tauri-glue.js`）寫明改咗咩 → smoke 全 PASS → GitHub release（tag `vX.Y.Z`＋上傳 Mac source tarball）→ 等用戶「發佈」指令先出包。
    Mac source 打包：`tar --exclude=node_modules --exclude='src-tauri/target' --exclude='*.bak' --exclude=.git -czf toys-gallery-desktop-mac-src-vX.Y.Z.tar.gz .`
    Release：`gh release create vX.Y.Z <tarball> --repo bwenpig/toy-legal-desktop`
