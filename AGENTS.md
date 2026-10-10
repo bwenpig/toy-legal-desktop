@@ -17,7 +17,7 @@
 |---|---|
 | 殼 | Tauri 2.x（Rust 側只註冊 plugin，`src-tauri/src/main.rs` 無自定義 command） |
 | 數據庫 | SQLite（WAL 模式），經 `plugin-sql`；關聯式 schema v2，18 張表 |
-| 前端核心 | web 版 TypeScript 編譯產物（`web-src/`，唯讀） |
+| 前端核心 | web 版 TypeScript 源碼（`web-src/`；2026-10-10 起允許修改，web 版已凍結） |
 | 桌面膠水層 | `src/tauri-glue.js`（DB 持久化、dialog、fs、設置畫面、Excel 匯出） |
 | 資料庫層 | `src/db-layer.js`（由 `desktop/db/*.ts` 編譯；JSON ↔ 關聯表雙向轉換） |
 | Excel | `xlsx`（SheetJS）：Voucher 批量匯入／匯出、報表 xlsx 美化 |
@@ -28,7 +28,7 @@
 ```
 mcp-server/           MCP Server（Node.js）：Codex 經 MCP 唯讀查賬套；見 mcp-server/README.md
 src-tauri/            Tauri 配置：tauri.conf.json、capabilities/default.json、Cargo.toml
-web-src/              web 版 TS 源碼（由 hk-legal-dora/src 複製；唯讀，唔好改）
+web-src/              web 版 TS 源碼（2026-10-10 起允許修改；web 版已凍結唔再維護）
 desktop/              桌面獨有 TS 源碼
   desktop-entry.ts    前端入口（掛載版本號、啟動 glue）
   desktop-shell.html  App 殼 HTML
@@ -63,7 +63,7 @@ scripts/
 
 ## 鐵律
 
-1. **唔好影響 web 版**：桌面獨有改動只做呢個 repo；`web-src/` 唯讀；唔好掂公開 artifact／`hk-legal-dora`。
+1. **web 版已凍結**（2026-10-10）：`web-src/` 允許修改；唔好掂公開 artifact／`hk-legal-dora` repo（佢哋凍結喺 v3.15.1）。
 2. 每次改版（無論功能定純文字）：遞增桌面版本號 → `DESKTOP_CHANGELOG`（`src/tauri-glue.js`）寫明改咗咩 → smoke 全 PASS → GitHub release（tag `vX.Y.Z`＋上傳 Mac source tarball）→ 等用戶「發佈」指令先出包。
    Mac source 打包：`tar --exclude=node_modules --exclude='src-tauri/target' --exclude='*.bak' --exclude=.git -czf toys-gallery-desktop-mac-src-vX.Y.Z.tar.gz .`
    Release：`gh release create vX.Y.Z <tarball> --repo bwenpig/toy-legal-desktop`
