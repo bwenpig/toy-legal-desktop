@@ -716,7 +716,7 @@ async function setReportMonth(monthKey) {
   /* ================= F. 匯入匯出整合 ================= */
   await t('F1', 'Voucher 範本有科目下拉選單',
     ['下載 voucher 範本', '解 xlsx 查 dataValidation'],
-    '13 欄；借／貸方欄有下拉', async () => {
+    '14 欄；借／貸方欄有下拉', async () => {
       const XLSX = require('xlsx');
       const JSZip = require('jszip');
       savedDialogPath = null;
@@ -740,7 +740,7 @@ async function setReportMonth(monthKey) {
       const wb = XLSX.readFile(savedDialogPath);
       const tplSheet = wb.Sheets['範本'] || wb.Sheets[wb.SheetNames[0]];
       const cols = XLSX.utils.sheet_to_json(tplSheet, { header: 1, defval: '' })[0] || [];
-      const ok = cols.length === 13 && dvCount >= 2;
+      const ok = cols.length === 14 && dvCount >= 2;
       return { pass: ok, actual: '範本欄數=' + cols.length + ' dataValidation=' + dvCount + ' 科目字串=' + accSheet };
     });
 
