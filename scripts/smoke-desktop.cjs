@@ -185,10 +185,10 @@ function makeV1Sample(){
   // T1 badge（桌面版＋核心兩個版本；Web 核心版本喺 S2 驗）
   const badge = await page.evaluate(() =>
     (document.querySelector('.version-badge') || {}).textContent || null);
-  check('T1 badge 顯示 v3.26.1＋核心 v3.15.1', badge === 'v3.26.1核心 v3.15.1', String(badge));
+  check('T1 badge 顯示 v3.26.2＋核心 v3.15.1', badge === 'v3.26.2核心 v3.15.1', String(badge));
   // T2 bridge
   const tgVer = await page.evaluate(() => window.__TG__ && window.__TG__.desktopVersion);
-  check('T2 __TG__.desktopVersion = 3.26.1', tgVer === "3.26.1", String(tgVer));
+  check('T2 __TG__.desktopVersion = 3.26.2', tgVer === "3.26.2", String(tgVer));
   const hasDb = await page.evaluate(() => !!window.__TG_DB__);
   check('T3 __TG_DB__ 存在', hasDb);
   // T4 啟動狀態（全新 DB → 空白賬套）
@@ -339,8 +339,8 @@ function makeV1Sample(){
   const appHidden = await page.evaluate(() => document.getElementById('appShell').style.display === 'none');
   check('S1 設置畫面開啟＋隱藏 app', setVisible && appHidden);
   const setVer = await page.evaluate(() => document.querySelector('.tgset-ver').textContent);
-  check('S2 版本：桌面版 3.26.1＋Web核心 v3.15.1',
-    /3\.26\.1/.test(setVer) && /v3\.15\.1/.test(setVer),
+  check('S2 版本：桌面版 3.26.2＋Web核心 v3.15.1',
+    /3\.26\.2/.test(setVer) && /v3\.15\.1/.test(setVer),
     setVer.trim().replace(/\s+/g, ' ').slice(0, 70));
   // S3/S4 表預覽
   await sleep(800);

@@ -3317,7 +3317,7 @@
     return { accounts: accCount, invoices: invCount };
   }
   var bridge = {
-    desktopVersion: "3.26.1",
+    desktopVersion: "3.26.2",
     createBackupPayload,
     validateBackup,
     prepareRestore,

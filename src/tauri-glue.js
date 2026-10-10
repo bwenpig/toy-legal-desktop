@@ -1383,39 +1383,44 @@ async function importExcelData(){
   setTimeout(ensureRolloverBtn, 2000);
 
   // v3.26.1：開完新財年自動彈結轉預覽（唔使手撳掣）
-  // 監測 fiscalYears 數量變化
-  var _fyCount = 0;
-  function checkNewFy(){
-    var TG = window.__TG__;
-    if(!TG || !TG.previewRollover) return;
-    // 經 __TG__ 攞財年數（desktop-entry 暴露 fiscalLabel，我哋用 DOM 嘅 select）
+  // 用 MutationObserver 監測 fiscalYearSelect 嘅 option 變化（比 polling 穩）
+  function setupAutoRollover(){
     var sel = document.getElementById('fiscalYearSelect');
-    if(!sel) return;
-    var n = sel.options.length;
-    if(_fyCount === 0){ _fyCount = n; return; }
-    if(n > _fyCount){
-      _fyCount = n;
-      // 有新財年：自動彈結轉預覽（由上一個財年結轉）
-      setTimeout(function(){
-        // 搵最新（第一個 option）同第二新
-        if(sel.options.length >= 2){
-          var toKey = sel.options[0].value;
-          var fromKey = sel.options[1].value;
-          // 檢查新財年係咪已經有期初數（避免重複彈）
-          var preview = TG.previewRollover(fromKey);
-          if(preview && preview.accounts.length > 0){
-            showRolloverPreview(preview, fromKey, toKey);
+    if(!sel || sel.dataset.tgRolloverHook) return;
+    sel.dataset.tgRolloverHook = '1';
+    var lastCount = sel.options.length;
+    new MutationObserver(function(){
+      var n = sel.options.length;
+      if(n > lastCount){
+        lastCount = n;
+        // 有新財年加入
+        setTimeout(function(){
+          var TG = window.__TG__;
+          if(!TG || !TG.previewRollover) return;
+          if(sel.options.length >= 2){
+            // 搵最大嘅 key（最新財年）同第二大
+            var keys = [];
+            for(var i=0;i<sel.options.length;i++) keys.push(sel.options[i].value);
+            keys.sort().reverse();
+            var toKey = keys[0], fromKey = keys[1];
+            var preview = TG.previewRollover(fromKey);
+            if(preview && preview.accounts.length > 0){
+              showRolloverPreview(preview, fromKey, toKey);
+            }
           }
-        }
-      }, 800);
-    }else{
-      _fyCount = n;
-    }
+        }, 800);
+      } else {
+        lastCount = n;
+      }
+    }).observe(sel, { childList: true });
   }
-  setInterval(checkNewFy, 2000);
+  // 定期確保 hook 已裝（select 可能遲加載）
+  setInterval(setupAutoRollover, 2000);
+  setTimeout(setupAutoRollover, 2000);
 })();
 
 var DESKTOP_CHANGELOG = [
+  ['3.26.2', '修復年結自動彈出唔穩定：由 polling 改用 MutationObserver 監測財年 select 變化。'],
   ['3.26.1', '年結轉賬改為自動：在財年管理新增財年後，系統自動彈出結轉預覽（唔使手撳「年結轉賬」掣）。'],
   ['3.26.0', '三個新功能：(1) Voucher Excel 加「對銷發票號」欄（N欄），有填對指定發票、吉就FIFO，預覽表顯示；(2) 期初發票 Excel 匯入：科目範本加「期初發票」頁（財年／客戶／發票號／日期／金額／AR-AP），自動校驗每客發票總數等於期初數；(3) 年結自動結轉：開新財年後「年結轉賬」掣，資產／負債／權益按類別自動結轉（新科目自動包埋），AR/AP未清發票逐張帶過去，預覽確認後寫入。'],
   ['3.25.2', 'voucher 列表加返「刪除」掣：刪除前確認（顯示編號＋金額＋摘要）；刪除後自動重過賬；已對銷嘅收款會回滾（發票恢復 outstanding）；附件一併刪除；刪除記錄寫入 deleted_vouchers 表留底。新增操作日誌（op_logs 表）：記錄入賬／修改／刪除、匯入、匯出、報表、登入同錯誤（含版本＋session＋用戶＋財年＋OS），設置頁可按日期匯出 JSON，只保留最近 10,000 條或 90 日。'],
