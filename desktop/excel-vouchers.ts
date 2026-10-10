@@ -46,6 +46,7 @@ export const VOUCHER_TEMPLATE_HEADERS = [
   '覆核 Checked By',
   '批核 Approved By',
   '附件 Attachment（檔名，多個用 ; 分隔）',
+  '對銷發票號 Allocation Invoice（吉=FIFO自動對銷）',
 ];
 
 /** 範本 AOA（含「說明」＋「範本」兩個 sheet 嘅資料，由 glue 分別寫 sheet） */
@@ -62,20 +63,21 @@ export function buildVoucherTemplateHelp(): ExcelRows {
     ['7. 製表／覆核／批核三個都要填（同系統入賬規則一致）。'],
     ['8. M 欄「附件」：填附件檔名，多個用 ; 分隔（例：receipt1.pdf;receipt2.jpg）。'],
     ['   匯入時將 Excel＋附件放喺同一個資料夾，系統會自動喺資料夾內搵對應檔案。'],
-    ['9. 第一行係標題列，請保留；下面嘅示例行請刪除後再填。'],
-    ['10. 匯入時會逐行驗證，有錯嘅行會列出，可揀「只匯入有效行」。'],
+    ['9. N 欄「對銷發票號」：收款／付款要對指定發票就填發票號；吉就按 FIFO（最舊先）自動對銷。'],
+    ['10. 第一行係標題列，請保留；下面嘅示例行請刪除後再填。'],
+    ['11. 匯入時會逐行驗證，有錯嘅行會列出，可揀「只匯入有效行」。'],
   ];
 }
 
 export function buildVoucherTemplateExample(): ExcelRows {
   return [
     VOUCHER_TEMPLATE_HEADERS,
-    // 示例 voucher 1：指定編號，兩行，有附件
-    ['2024-04-05', 'B040124', 'B', '收到 Toy Hunters 貨款', 'Bank Saving Account', 5000, '', '', 'INV2024040026', '阿Bin', '阿May', '老闆', 'receipt1.pdf;receipt2.jpg'],
-    ['2024-04-05', 'B040124', 'B', '收到 Toy Hunters 貨款', '', '', 'Accounts Receivable of Toy Hunters', 5000, 'INV2024040026', '阿Bin', '阿May', '老闆', ''],
-    // 示例 voucher 2：吉編號（自動），兩行
-    ['2024-04-06', '', 'T', '付供應商訂金', 'Prepayment to Supplier', 1200.5, '', '', '', '阿Bin', '阿May', '老闆', ''],
-    ['2024-04-06', '', 'T', '付供應商訂金', '', '', 'Bank Saving Account', 1200.5, '', '阿Bin', '阿May', '老闆', ''],
+    // 示例 voucher 1：指定編號，兩行，有附件，對銷指定發票
+    ['2024-04-05', 'B040124', 'B', '收到 Toy Hunters 貨款', 'Bank Saving Account', 5000, '', '', 'INV2024040026', '阿Bin', '阿May', '老闆', 'receipt1.pdf;receipt2.jpg', 'INV2024040026'],
+    ['2024-04-05', 'B040124', 'B', '收到 Toy Hunters 貨款', '', '', 'Accounts Receivable of Toy Hunters', 5000, 'INV2024040026', '阿Bin', '阿May', '老闆', '', 'INV2024040026'],
+    // 示例 voucher 2：吉編號（自動），兩行，FIFO
+    ['2024-04-06', '', 'T', '付供應商訂金', 'Prepayment to Supplier', 1200.5, '', '', '', '阿Bin', '阿May', '老闆', '', ''],
+    ['2024-04-06', '', 'T', '付供應商訂金', '', '', 'Bank Saving Account', 1200.5, '', '阿Bin', '阿May', '老闆', '', ''],
   ];
 }
 
@@ -100,6 +102,8 @@ export interface VoucherDraft {
   rowNums: number[]; // Excel 行號（1-based，含標題行）
   /** 附件檔名（Excel 第 13 欄，; 分隔；匯入時由 glue 喺匯入資料夾內搵檔讀取） */
   attachmentPaths: string[];
+  /** 對銷發票號（Excel 第 14 欄；吉=FIFO） */
+  allocationInvoice: string;
 }
 
 export interface RowError {
@@ -190,6 +194,7 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
     checkedBy: string,
     approvedBy: string,
     attachmentPaths: string[],
+    allocationInvoice: string,
   ): VoucherDraft | null => {
     let key: string;
     if (voucherNo) {
@@ -215,6 +220,7 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
       d = {
         key, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy,
         lines: [], rowNums: [], attachmentPaths: [...attachmentPaths],
+        allocationInvoice,
       };
       draftByKey.set(key, d);
       drafts.push(d);
@@ -222,6 +228,10 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
       // 同一編號但 voucher 層欄位唔一致 → 記錯（用第一行嘅為準）
       if (d.date !== date || d.type !== type) {
         errors.push({ rowNum, message: '同一 Voucher No. 嘅日期／類型唔一致（' + d.date + '/' + d.type + ' vs ' + date + '/' + type + '）。' });
+        return null;
+      }
+      if (d.allocationInvoice !== allocationInvoice) {
+        errors.push({ rowNum, message: '同一 Voucher No. 嘅對銷發票號唔一致（' + (d.allocationInvoice || '（吉）') + ' vs ' + (allocationInvoice || '（吉）') + '）。' });
         return null;
       }
       // 合併附件路徑（去重）
@@ -243,6 +253,8 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
     const detail = c(8), madeBy = c(9), checkedBy = c(10), approvedBy = c(11);
     // 第 13 欄：附件檔名（; ／ ； ／換行分隔；以匯入資料夾為基準，子資料夾可用相對路徑）
     const attachmentPaths = c(12).split(/[;；\n\r]+/).map(s => s.trim()).filter(Boolean);
+    // 第 14 欄：對銷發票號（吉=FIFO）
+    const allocationInvoice = c(13).trim();
     let rowOk = true;
     const err = (msg: string) => { errors.push({ rowNum, message: msg }); rowOk = false; };
 
@@ -272,7 +284,7 @@ export function parseVoucherImport(allRows: ExcelRows): ParsedVoucherImport {
     else if (!acct) err('科目唔存在：' + acctRaw + '（填編號或名稱，必須已喺系統存在）。');
 
     if (!rowOk) continue;
-    const d = getDraft(rowNum, voucherNo, date, type as 'B' | 'T', desc, madeBy, checkedBy, approvedBy, attachmentPaths);
+    const d = getDraft(rowNum, voucherNo, date, type as 'B' | 'T', desc, madeBy, checkedBy, approvedBy, attachmentPaths, allocationInvoice);
     if (!d) continue;
     d.lines.push({
       account: (acct as { name: string }).name,
@@ -335,7 +347,7 @@ export function importVouchers(drafts: VoucherDraft[]): VoucherImportResult {
       numberManual: Boolean(d.voucherNo),
       date: d.date,
       desc: d.desc,
-      allocationInvoice: '',
+      allocationInvoice: d.allocationInvoice || '',
       madeBy: d.madeBy,
       checkedBy: d.checkedBy,
       approvedBy: d.approvedBy,

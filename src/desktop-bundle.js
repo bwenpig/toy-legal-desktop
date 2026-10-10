@@ -2715,7 +2715,8 @@
     "\u88FD\u8868 Made By",
     "\u8986\u6838 Checked By",
     "\u6279\u6838 Approved By",
-    "\u9644\u4EF6 Attachment\uFF08\u6A94\u540D\uFF0C\u591A\u500B\u7528 ; \u5206\u9694\uFF09"
+    "\u9644\u4EF6 Attachment\uFF08\u6A94\u540D\uFF0C\u591A\u500B\u7528 ; \u5206\u9694\uFF09",
+    "\u5C0D\u92B7\u767C\u7968\u865F Allocation Invoice\uFF08\u5409=FIFO\u81EA\u52D5\u5C0D\u92B7\uFF09"
   ];
   function buildVoucherTemplateHelp() {
     return [
@@ -2730,19 +2731,20 @@
       ["7. \u88FD\u8868\uFF0F\u8986\u6838\uFF0F\u6279\u6838\u4E09\u500B\u90FD\u8981\u586B\uFF08\u540C\u7CFB\u7D71\u5165\u8CEC\u898F\u5247\u4E00\u81F4\uFF09\u3002"],
       ["8. M \u6B04\u300C\u9644\u4EF6\u300D\uFF1A\u586B\u9644\u4EF6\u6A94\u540D\uFF0C\u591A\u500B\u7528 ; \u5206\u9694\uFF08\u4F8B\uFF1Areceipt1.pdf;receipt2.jpg\uFF09\u3002"],
       ["   \u532F\u5165\u6642\u5C07 Excel\uFF0B\u9644\u4EF6\u653E\u55BA\u540C\u4E00\u500B\u8CC7\u6599\u593E\uFF0C\u7CFB\u7D71\u6703\u81EA\u52D5\u55BA\u8CC7\u6599\u593E\u5167\u6435\u5C0D\u61C9\u6A94\u6848\u3002"],
-      ["9. \u7B2C\u4E00\u884C\u4FC2\u6A19\u984C\u5217\uFF0C\u8ACB\u4FDD\u7559\uFF1B\u4E0B\u9762\u5605\u793A\u4F8B\u884C\u8ACB\u522A\u9664\u5F8C\u518D\u586B\u3002"],
-      ["10. \u532F\u5165\u6642\u6703\u9010\u884C\u9A57\u8B49\uFF0C\u6709\u932F\u5605\u884C\u6703\u5217\u51FA\uFF0C\u53EF\u63C0\u300C\u53EA\u532F\u5165\u6709\u6548\u884C\u300D\u3002"]
+      ["9. N \u6B04\u300C\u5C0D\u92B7\u767C\u7968\u865F\u300D\uFF1A\u6536\u6B3E\uFF0F\u4ED8\u6B3E\u8981\u5C0D\u6307\u5B9A\u767C\u7968\u5C31\u586B\u767C\u7968\u865F\uFF1B\u5409\u5C31\u6309 FIFO\uFF08\u6700\u820A\u5148\uFF09\u81EA\u52D5\u5C0D\u92B7\u3002"],
+      ["10. \u7B2C\u4E00\u884C\u4FC2\u6A19\u984C\u5217\uFF0C\u8ACB\u4FDD\u7559\uFF1B\u4E0B\u9762\u5605\u793A\u4F8B\u884C\u8ACB\u522A\u9664\u5F8C\u518D\u586B\u3002"],
+      ["11. \u532F\u5165\u6642\u6703\u9010\u884C\u9A57\u8B49\uFF0C\u6709\u932F\u5605\u884C\u6703\u5217\u51FA\uFF0C\u53EF\u63C0\u300C\u53EA\u532F\u5165\u6709\u6548\u884C\u300D\u3002"]
     ];
   }
   function buildVoucherTemplateExample() {
     return [
       VOUCHER_TEMPLATE_HEADERS,
-      // 示例 voucher 1：指定編號，兩行，有附件
-      ["2024-04-05", "B040124", "B", "\u6536\u5230 Toy Hunters \u8CA8\u6B3E", "Bank Saving Account", 5e3, "", "", "INV2024040026", "\u963FBin", "\u963FMay", "\u8001\u95C6", "receipt1.pdf;receipt2.jpg"],
-      ["2024-04-05", "B040124", "B", "\u6536\u5230 Toy Hunters \u8CA8\u6B3E", "", "", "Accounts Receivable of Toy Hunters", 5e3, "INV2024040026", "\u963FBin", "\u963FMay", "\u8001\u95C6", ""],
-      // 示例 voucher 2：吉編號（自動），兩行
-      ["2024-04-06", "", "T", "\u4ED8\u4F9B\u61C9\u5546\u8A02\u91D1", "Prepayment to Supplier", 1200.5, "", "", "", "\u963FBin", "\u963FMay", "\u8001\u95C6", ""],
-      ["2024-04-06", "", "T", "\u4ED8\u4F9B\u61C9\u5546\u8A02\u91D1", "", "", "Bank Saving Account", 1200.5, "", "\u963FBin", "\u963FMay", "\u8001\u95C6", ""]
+      // 示例 voucher 1：指定編號，兩行，有附件，對銷指定發票
+      ["2024-04-05", "B040124", "B", "\u6536\u5230 Toy Hunters \u8CA8\u6B3E", "Bank Saving Account", 5e3, "", "", "INV2024040026", "\u963FBin", "\u963FMay", "\u8001\u95C6", "receipt1.pdf;receipt2.jpg", "INV2024040026"],
+      ["2024-04-05", "B040124", "B", "\u6536\u5230 Toy Hunters \u8CA8\u6B3E", "", "", "Accounts Receivable of Toy Hunters", 5e3, "INV2024040026", "\u963FBin", "\u963FMay", "\u8001\u95C6", "", "INV2024040026"],
+      // 示例 voucher 2：吉編號（自動），兩行，FIFO
+      ["2024-04-06", "", "T", "\u4ED8\u4F9B\u61C9\u5546\u8A02\u91D1", "Prepayment to Supplier", 1200.5, "", "", "", "\u963FBin", "\u963FMay", "\u8001\u95C6", "", ""],
+      ["2024-04-06", "", "T", "\u4ED8\u4F9B\u61C9\u5546\u8A02\u91D1", "", "", "Bank Saving Account", 1200.5, "", "\u963FBin", "\u963FMay", "\u8001\u95C6", "", ""]
     ];
   }
   function cellStr(v) {
@@ -2798,7 +2800,7 @@
     const existingNos = new Set(store.vouchers.map((v) => String(v.no).toLowerCase()));
     const draftByKey = /* @__PURE__ */ new Map();
     let autoGroup = 0;
-    const getDraft = (rowNum, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy, attachmentPaths) => {
+    const getDraft = (rowNum, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy, attachmentPaths, allocationInvoice) => {
       let key;
       if (voucherNo) {
         key = "no:" + voucherNo.toLowerCase();
@@ -2823,13 +2825,18 @@
           approvedBy,
           lines: [],
           rowNums: [],
-          attachmentPaths: [...attachmentPaths]
+          attachmentPaths: [...attachmentPaths],
+          allocationInvoice
         };
         draftByKey.set(key, d);
         drafts.push(d);
       } else {
         if (d.date !== date || d.type !== type) {
           errors.push({ rowNum, message: "\u540C\u4E00 Voucher No. \u5605\u65E5\u671F\uFF0F\u985E\u578B\u5514\u4E00\u81F4\uFF08" + d.date + "/" + d.type + " vs " + date + "/" + type + "\uFF09\u3002" });
+          return null;
+        }
+        if (d.allocationInvoice !== allocationInvoice) {
+          errors.push({ rowNum, message: "\u540C\u4E00 Voucher No. \u5605\u5C0D\u92B7\u767C\u7968\u865F\u5514\u4E00\u81F4\uFF08" + (d.allocationInvoice || "\uFF08\u5409\uFF09") + " vs " + (allocationInvoice || "\uFF08\u5409\uFF09") + "\uFF09\u3002" });
           return null;
         }
         for (const p of attachmentPaths) {
@@ -2848,6 +2855,7 @@
       const crAcctRaw = c(6), crAmtRaw = cellStr(r[7]);
       const detail = c(8), madeBy = c(9), checkedBy = c(10), approvedBy = c(11);
       const attachmentPaths = c(12).split(/[;；\n\r]+/).map((s) => s.trim()).filter(Boolean);
+      const allocationInvoice = c(13).trim();
       let rowOk = true;
       const err = (msg) => {
         errors.push({ rowNum, message: msg });
@@ -2884,7 +2892,7 @@
       if (!acctRaw) err("\u8ACB\u586B" + (drFilled ? "\u501F\u65B9" : "\u8CB8\u65B9") + "\u79D1\u76EE\u3002");
       else if (!acct) err("\u79D1\u76EE\u5514\u5B58\u5728\uFF1A" + acctRaw + "\uFF08\u586B\u7DE8\u865F\u6216\u540D\u7A31\uFF0C\u5FC5\u9808\u5DF2\u55BA\u7CFB\u7D71\u5B58\u5728\uFF09\u3002");
       if (!rowOk) continue;
-      const d = getDraft(rowNum, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy, attachmentPaths);
+      const d = getDraft(rowNum, voucherNo, date, type, desc, madeBy, checkedBy, approvedBy, attachmentPaths, allocationInvoice);
       if (!d) continue;
       d.lines.push({
         account: acct.name,
@@ -2928,7 +2936,7 @@
         numberManual: Boolean(d.voucherNo),
         date: d.date,
         desc: d.desc,
-        allocationInvoice: "",
+        allocationInvoice: d.allocationInvoice || "",
         madeBy: d.madeBy,
         checkedBy: d.checkedBy,
         approvedBy: d.approvedBy,
@@ -3162,13 +3170,154 @@
       store.openingBalances[fy.key][String(r.account)] = entry;
       setOpening++;
     }
+    let setInvoices = 0;
+    let invoiceErrors = 0;
+    const invoiceTotals = /* @__PURE__ */ new Map();
+    for (const inv of imp.invoices || []) {
+      const fyKey = String(inv.fy || "").trim();
+      const party = String(inv.party || "").trim();
+      const no = String(inv.no || "").trim();
+      const date = String(inv.date || "").trim();
+      const kind = String(inv.kind || "").trim().toUpperCase();
+      const amount = Number(inv.amount);
+      const fy = store.fiscalYears.find((f) => f.key === fyKey);
+      if (!fy || !party || !no || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(amount) || amount <= 0 || kind !== "AR" && kind !== "AP") {
+        invoiceErrors++;
+        continue;
+      }
+      const cents = dollarsToCents(amount);
+      const row = [date, no, party, cents, "opening"];
+      if (kind === "AR") {
+        if (!store.salesInvoices.some((x) => x[1] === no)) {
+          store.salesInvoices.push(row);
+          setInvoices++;
+        }
+      } else {
+        if (!store.purchaseInvoices.some((x) => x[1] === no)) {
+          store.purchaseInvoices.push(row);
+          setInvoices++;
+        }
+      }
+      const tkey = fyKey + "|" + kind + "|" + party;
+      invoiceTotals.set(tkey, (invoiceTotals.get(tkey) || 0) + cents);
+    }
+    const invoiceMismatch = [];
+    for (const [tkey, total] of invoiceTotals) {
+      const [fyKey, kind, party] = tkey.split("|");
+      const acctName = (kind === "AR" ? "Accounts Receivable of " : "Accounts Payable of ") + party;
+      const obRaw = store.openingBalances[fyKey] && store.openingBalances[fyKey][acctName];
+      if (!obRaw) {
+        invoiceMismatch.push(party + "\uFF08\u7121\u671F\u521D\u6578\uFF09");
+        continue;
+      }
+      const ob = obRaw;
+      const obCents = (ob.debit || 0) + (ob.credit || 0);
+      if (Math.abs(obCents - total) > 0) {
+        invoiceMismatch.push(party + "\uFF08\u767C\u7968 " + (total / 100).toFixed(2) + " vs \u671F\u521D " + (obCents / 100).toFixed(2) + "\uFF09");
+      }
+    }
     renderAccounts();
     renderReport();
     renderKPIs();
-    return { addedAccounts, skippedAccounts, setOpening, openingErrors };
+    return { addedAccounts, skippedAccounts, setOpening, openingErrors, setInvoices, invoiceErrors, invoiceMismatch };
+  }
+  function previewRollover(fromKey) {
+    const fromFy = store.fiscalYears.find((f) => f.key === fromKey);
+    if (!fromFy) return null;
+    const toStart = fromFy.start + 1;
+    const toLabel = "FY" + toStart + "/" + String(toStart + 1).slice(-2);
+    const accounts = [];
+    for (const a of store.accounts) {
+      if (!["\u8CC7\u7522", "\u8CA0\u50B5", "\u6B0A\u76CA"].includes(a.type)) continue;
+      const bal = accountBalance(a, fromFy);
+      if (bal === 0) continue;
+      accounts.push({ name: a.name, type: a.type, closing: bal });
+    }
+    const invoices = [];
+    const parties = /* @__PURE__ */ new Set();
+    for (const a of store.accounts) {
+      let kind = "";
+      let party = "";
+      if (a.name.startsWith("Accounts Receivable of ")) {
+        kind = "AR";
+        party = a.name.replace("Accounts Receivable of ", "");
+      } else if (a.name.startsWith("Accounts Payable of ")) {
+        kind = "AP";
+        party = a.name.replace("Accounts Payable of ", "");
+      }
+      if (!kind) continue;
+      parties.add(party);
+    }
+    const ctx2 = {
+      salesInvoices: store.salesInvoices,
+      purchaseInvoices: store.purchaseInvoices,
+      allocations: store.allocations,
+      openingBalances: store.openingBalances,
+      vouchers: store.vouchers,
+      accounts: store.accounts
+    };
+    for (const party of parties) {
+      for (const kind of ["AR", "AP"]) {
+        const acctName = (kind === "AR" ? "Accounts Receivable of " : "Accounts Payable of ") + party;
+        if (!store.accounts.some((a) => a.name === acctName)) continue;
+        try {
+          const invs = invoiceMatches2(kind, party, fromFy, ctx2);
+          for (const inv of invs) {
+            const total = inv[3];
+            const alloc = allocatedTotal2(kind, inv[1], fromFy, store.allocations);
+            const out = total - alloc;
+            if (out > 0) {
+              invoices.push({ kind, party, no: inv[1], date: inv[0], outstanding: out });
+            }
+          }
+        } catch (e) {
+        }
+      }
+    }
+    return {
+      fromLabel: fromFy.label,
+      toLabel,
+      accounts,
+      invoices,
+      invoiceParties: [...parties]
+    };
+  }
+  function executeRollover(fromKey, toKey) {
+    const preview = previewRollover(fromKey);
+    if (!preview) return { accounts: 0, invoices: 0 };
+    const toFy = store.fiscalYears.find((f) => f.key === toKey);
+    if (!toFy) return { accounts: 0, invoices: 0 };
+    let accCount = 0;
+    store.openingBalances[toKey] = store.openingBalances[toKey] || {};
+    for (const a of preview.accounts) {
+      const acct = store.accounts.find((x) => x.name === a.name);
+      if (!acct) continue;
+      const entry = acct.side === "dr" ? { debit: a.closing, credit: 0 } : { debit: 0, credit: a.closing };
+      store.openingBalances[toKey][a.name] = entry;
+      accCount++;
+    }
+    let invCount = 0;
+    for (const inv of preview.invoices) {
+      const row = [inv.date, inv.no, inv.party, inv.outstanding, "opening"];
+      if (inv.kind === "AR") {
+        if (!store.salesInvoices.some((x) => x[1] === inv.no)) {
+          store.salesInvoices.push(row);
+          invCount++;
+        }
+      } else {
+        if (!store.purchaseInvoices.some((x) => x[1] === inv.no)) {
+          store.purchaseInvoices.push(row);
+          invCount++;
+        }
+      }
+    }
+    renderAccounts();
+    renderReport();
+    renderKPIs();
+    return { accounts: accCount, invoices: invCount };
   }
   var bridge = {
-    desktopVersion: "3.25.2",
+    desktopVersion: "3.26.0",
     createBackupPayload,
     validateBackup,
     prepareRestore,
@@ -3190,6 +3339,8 @@
     importVouchers,
     nextVoucherNumberFor,
     renderVoucherList,
+    previewRollover,
+    executeRollover,
     /** v3.25.2：按編號攞 voucher（操作日誌用） */
     getVoucher: (no) => {
       const v = store.vouchers.find((x) => x.no === no);

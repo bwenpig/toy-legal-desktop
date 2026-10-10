@@ -1196,6 +1196,12 @@ function downloadImportTemplate(){
     ]);
     wsOp['!cols'] = [{ wch: 18 }, { wch: 42 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, wsOp, '期初數');
+    var wsInv = XLSX.utils.aoa_to_sheet([
+      ['財年 FiscalYear', '客戶／供應商 Party', '發票號 InvoiceNo', '發票日期 Date', '金額 Amount', '類型 Type（AR=應收/AP=應付）'],
+      ['2024', 'Toy Hunters', 'INV2024030014', '2024-03-20', 11280, 'AR']
+    ]);
+    wsInv['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 20 }, { wch: 16 }, { wch: 18 }, { wch: 22 }];
+    XLSX.utils.book_append_sheet(wb, wsInv, '期初發票');
     var out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
     dlgSave({ title: '下載匯入範本',
       defaultPath: 'Toys-Gallery-import-template.xlsx',
@@ -1222,7 +1228,7 @@ async function importExcelData(){
     if(Array.isArray(path)) path = path[0];
     setStatus('正在讀取 Excel…');
     var wb = XLSX.read(await fsReadBytes(path), { type: 'array' });
-    var imp = { accounts: [], opening: [] };
+    var imp = { accounts: [], opening: [], invoices: [] };
 
     var wsAcc = wb.Sheets['科目表'] || wb.Sheets['Accounts'];
     if(wsAcc){
@@ -1248,12 +1254,29 @@ async function importExcelData(){
         imp.opening.push({ fy: fy, account: account, amount: amount });
       }
     }
-    if(!imp.accounts.length && !imp.opening.length){ setStatus('Excel 內無可匯入資料'); return; }
+    var wsInv = wb.Sheets['期初發票'] || wb.Sheets['OpeningInvoices'];
+    if(wsInv){
+      var rows3 = XLSX.utils.sheet_to_json(wsInv, { header: 1, defval: '' });
+      var hi3 = findHeaderRow(rows3, function(c){ return /發票號|InvoiceNo/i.test(c); });
+      if(hi3 >= 0) for(var k = hi3 + 1; k < rows3.length; k++){
+        var ify = String(rows3[k][0] || '').trim(),
+            party = String(rows3[k][1] || '').trim(),
+            invNo = String(rows3[k][2] || '').trim(),
+            invDate = String(rows3[k][3] || '').trim(),
+            invAmt = Number(String(rows3[k][4]).replace(/,/g, '')),
+            invType = String(rows3[k][5] || '').trim().toUpperCase();
+        if(!ify && !party && !invNo) continue;
+        imp.invoices.push({ fy: ify, party: party, no: invNo, date: invDate, amount: invAmt, kind: invType });
+      }
+    }
+    if(!imp.accounts.length && !imp.opening.length && !imp.invoices.length){ setStatus('Excel 內無可匯入資料'); return; }
 
     var res = TG.importExcelData(imp);
     schedulePersist();
+    var invMsg = res.setInvoices ? '· 期初發票 ' + res.setInvoices + ' 張' + (res.invoiceErrors ? '（' + res.invoiceErrors + ' 張失敗）' : '') : '';
+    var invMismatch = res.invoiceMismatch && res.invoiceMismatch.length ? ' ⚠ 發票總數同期初數唔啱：' + res.invoiceMismatch.join('、') : '';
     setStatus('匯入完成：科目新增 ' + res.addedAccounts + '（跳過 ' + res.skippedAccounts +
-      '）· 期初數 ' + res.setOpening + ' 筆' + (res.openingErrors ? '（' + res.openingErrors + ' 筆失敗：財年／科目唔啱）' : ''));
+      '）· 期初數 ' + res.setOpening + ' 筆' + (res.openingErrors ? '（' + res.openingErrors + ' 筆失敗：財年／科目唔啱）' : '') + invMsg + invMismatch);
   }catch(e){
     console.error('[desktop] excel import failed:', e);
     setStatus('匯入失敗：' + (e.message || e));
@@ -1263,7 +1286,105 @@ async function importExcelData(){
 /* ---------- 9b. 桌面設置（桌面獨有 view；web-src 零改動） ----------
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
+/* ---------- v3.26.0：年結自動結轉（桌面獨有） ----------
+ * 喺財年管理加「年結轉賬」掣：揀來源財年 → 預覽 → 確認寫入下年期初
+ */
+(function(){
+  function ensureRolloverBtn(){
+    var fm = document.getElementById('fiscalManager');
+    if(!fm || document.getElementById('tgRolloverBtn')) return;
+    var btn = document.createElement('button');
+    btn.id = 'tgRolloverBtn';
+    btn.className = 'btn';
+    btn.type = 'button';
+    btn.textContent = '年結轉賬';
+    btn.title = '將上年度 closing 結轉為新財年 opening（資產／負債／權益＋AR/AP發票明細）';
+    btn.style.cssText = 'margin-left:8px;';
+    btn.addEventListener('click', openRolloverModal);
+    // 放喺新增財年表單隔離
+    var form = document.getElementById('fiscalYearForm');
+    if(form && form.parentElement){
+      form.parentElement.insertBefore(btn, form.nextSibling);
+    }else{
+      fm.appendChild(btn);
+    }
+  }
+  function openRolloverModal(){
+    var TG = window.__TG__;
+    if(!TG || !TG.previewRollover){ setStatus('結轉功能未就緒'); return; }
+    // 搵最新兩個財年
+    var sel = document.getElementById('fiscalYearSelect');
+    var fys = [];
+    if(sel){
+      for(var i = 0; i < sel.options.length; i++){
+        fys.push({ key: sel.options[i].value, label: sel.options[i].text });
+      }
+    }
+    if(fys.length < 1){ setStatus('無財年可結轉'); return; }
+    // 預設：由最新財年結轉去下一年（如果下一年未開，先提示開財年）
+    var fromKey = fys[0].key;
+    var fromStart = parseInt(fromKey, 10);
+    var toKey = String(fromStart + 1);
+    var toExists = fys.some(function(f){ return f.key === toKey; });
+    if(!toExists){
+      setStatus('請先新增 ' + toKey + ' 財年，再做年結轉賬');
+      return;
+    }
+    var preview = TG.previewRollover(fromKey);
+    if(!preview){ setStatus('預覽失敗'); return; }
+    showRolloverPreview(preview, fromKey, toKey);
+  }
+  function showRolloverPreview(pv, fromKey, toKey){
+    var old = document.getElementById('tgRolloverModal');
+    if(old) old.remove();
+    var overlay = document.createElement('div');
+    overlay.id = 'tgRolloverModal';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    var box = document.createElement('div');
+    box.style.cssText = 'background:var(--surface,#fff);border-radius:12px;padding:24px;width:min(700px,92vw);max-height:85vh;overflow:auto;';
+    var html = '<h3 style="margin:0 0 12px;">年結轉賬預覽</h3>' +
+      '<p style="color:var(--muted);font-size:13px;">由 ' + escHtml(pv.fromLabel) + ' 結轉至 ' + escHtml(pv.toLabel) + '。只結轉資產／負債／權益科目；收入／成本／費用唔帶。</p>';
+    html += '<h4>科目結轉（' + pv.accounts.length + ' 個）</h4>';
+    html += '<div style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:8px;"><table class="tgset-grid"><thead><tr><th>科目</th><th>類別</th><th>Closing</th><th>→ Opening</th></tr></thead><tbody>';
+    pv.accounts.forEach(function(a){
+      html += '<tr><td>' + escHtml(a.name) + '</td><td>' + escHtml(a.type) + '</td><td class="num">' + fmtCentsPlain(a.closing) + '</td><td class="num">' + fmtCentsPlain(a.closing) + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    html += '<h4>AR/AP 未清發票（' + pv.invoices.length + ' 張）</h4>';
+    if(pv.invoices.length){
+      html += '<div style="max-height:200px;overflow:auto;border:1px solid var(--line);border-radius:8px;"><table class="tgset-grid"><thead><tr><th>類型</th><th>對方</th><th>發票號</th><th>日期</th><th>未清金額</th></tr></thead><tbody>';
+      pv.invoices.forEach(function(inv){
+        html += '<tr><td>' + inv.kind + '</td><td>' + escHtml(inv.party) + '</td><td>' + escHtml(inv.no) + '</td><td>' + escHtml(inv.date) + '</td><td class="num">' + fmtCentsPlain(inv.outstanding) + '</td></tr>';
+      });
+      html += '</tbody></table></div>';
+    }else{
+      html += '<p style="color:var(--muted)">無未清發票</p>';
+    }
+    html += '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;">' +
+      '<button class="btn" id="tgRolloverCancel" type="button">取消</button>' +
+      '<button class="btn primary" id="tgRolloverGo" type="button">確認結轉</button></div>';
+    box.innerHTML = html;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    document.getElementById('tgRolloverCancel').addEventListener('click', function(){ overlay.remove(); });
+    overlay.addEventListener('click', function(e){ if(e.target === overlay) overlay.remove(); });
+    document.getElementById('tgRolloverGo').addEventListener('click', function(){
+      var TG = window.__TG__;
+      var res = TG.executeRollover(fromKey, toKey);
+      schedulePersist();
+      overlay.remove();
+      setStatus('結轉完成：' + res.accounts + ' 個科目，' + res.invoices + ' 張發票');
+      writeOpLog({ op: 'fiscal.rollover', detail: '年結轉賬 ' + pv.fromLabel + ' → ' + pv.toLabel, result: 'ok', after: res });
+    });
+  }
+  // 用 MutationObserver 確保財年管理開嗰陣有掣
+  new MutationObserver(function(){ ensureRolloverBtn(); }).observe(document.body, { childList: true, subtree: true });
+  // 初次試
+  setTimeout(ensureRolloverBtn, 2000);
+})();
+
 var DESKTOP_CHANGELOG = [
+  ['3.26.0', '三個新功能：(1) Voucher Excel 加「對銷發票號」欄（N欄），有填對指定發票、吉就FIFO，預覽表顯示；(2) 期初發票 Excel 匯入：科目範本加「期初發票」頁（財年／客戶／發票號／日期／金額／AR-AP），自動校驗每客發票總數等於期初數；(3) 年結自動結轉：開新財年後「年結轉賬」掣，資產／負債／權益按類別自動結轉（新科目自動包埋），AR/AP未清發票逐張帶過去，預覽確認後寫入。'],
   ['3.25.2', 'voucher 列表加返「刪除」掣：刪除前確認（顯示編號＋金額＋摘要）；刪除後自動重過賬；已對銷嘅收款會回滾（發票恢復 outstanding）；附件一併刪除；刪除記錄寫入 deleted_vouchers 表留底。新增操作日誌（op_logs 表）：記錄入賬／修改／刪除、匯入、匯出、報表、登入同錯誤（含版本＋session＋用戶＋財年＋OS），設置頁可按日期匯出 JSON，只保留最近 10,000 條或 90 日。'],
   ['3.25.1', '修復「修改」公司名撳咗無反應：Tauri 唔支援 window.prompt，轉用自製輸入 modal（登入補錄同修改都用同一個）。'],
   ['3.25.0', '新增公司名：存 app_state kv 表；空庫登入提示補錄；工具欄顯示＋修改；匯出報表／Voucher 帶公司名。'],
@@ -2123,13 +2244,14 @@ function renderVoucherImportPreview(box, parsed){
   }
   if(parsed.validDrafts.length){
     html += '<p><strong>有效 voucher（' + parsed.validDrafts.length + ' 張）：</strong></p>' +
-      '<div class="tgset-gridwrap" style="max-height:220px"><table class="tgset-grid"><thead><tr><th>Voucher No.</th><th>日期</th><th>類型</th><th>摘要</th><th>行數</th><th>金額</th><th>附件</th></tr></thead><tbody>' +
+      '<div class="tgset-gridwrap" style="max-height:220px"><table class="tgset-grid"><thead><tr><th>Voucher No.</th><th>日期</th><th>類型</th><th>摘要</th><th>行數</th><th>金額</th><th>附件</th><th>對銷發票</th></tr></thead><tbody>' +
       parsed.validDrafts.map(function(d){
         var dr = d.lines.reduce(function(s, l){ return s + l.debit; }, 0);
         var att = (d.attachmentPaths && d.attachmentPaths.length) ? ('📎 ' + d.attachmentPaths.length + ' 個') : '—';
+        var alloc = d.allocationInvoice ? escHtml(d.allocationInvoice) : '<span style="color:var(--muted)">FIFO</span>';
         return '<tr><td>' + escHtml(d.voucherNo || '（自動編號）') + '</td><td>' + escHtml(d.date) + '</td><td>' +
           (d.type === 'B' ? '銀行' : '轉賬') + '</td><td>' + escHtml(d.desc) + '</td><td>' + d.lines.length +
-          '</td><td>' + escHtml(fmtCentsPlain(dr)) + '</td><td>' + escHtml(att) + '</td></tr>';
+          '</td><td>' + escHtml(fmtCentsPlain(dr)) + '</td><td>' + escHtml(att) + '</td><td>' + alloc + '</td></tr>';
       }).join('') + '</tbody></table></div>' +
       '<p><button class="btn primary" id="tgVoucherImportGo" type="button">只匯入有效行（' +
       parsed.validDrafts.length + ' 張）</button> ' +

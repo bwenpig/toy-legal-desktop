@@ -25,9 +25,12 @@ import {
   replaceSet,
 } from '../web-src/backup';
 import { reportBody, renderReport, renderKPIs } from '../web-src/reports';
+import type { InvoiceRow } from '../web-src/types';
+import { invoiceMatches } from '../web-src/core/invoices';
+import { allocatedTotal } from '../web-src/core/allocation';
 import { renderAccounts, sortAccounts } from '../web-src/accounts';
 import { renderVoucherList, renderInvoiceNumberList, attachmentButtonHTML, bindAttachmentButtons, openAttachmentList, applyVoucherBalance, clearVoucherAllocations, createNewVoucher } from '../web-src/vouchers';
-import { renderLedger } from '../web-src/ledger';
+import { renderLedger, accountBalance } from '../web-src/ledger';
 import { navigate, renderStaffNames } from '../web-src/ui';
 import { dollarsToCents, toCents } from '../web-src/money';
 import type { Cents } from '../web-src/money';
@@ -122,11 +125,23 @@ export interface ExcelImportOpening {
   account: string;
   amount: number;
 }
+export interface ExcelImportInvoice {
+  fy: string;
+  party: string;
+  no: string;
+  date: string;
+  amount: number;
+  kind: string; // AR / AP
+}
 export interface ExcelImportResult {
   addedAccounts: number;
   skippedAccounts: number;
   setOpening: number;
   openingErrors: number;
+  setInvoices: number;
+  invoiceErrors: number;
+  /** 每個客發票總數同期初數唔啱嘅描述 */
+  invoiceMismatch: string[];
 }
 
 /**
@@ -137,6 +152,7 @@ export interface ExcelImportResult {
 function importExcelData(imp: {
   accounts?: ExcelImportAccount[];
   opening?: ExcelImportOpening[];
+  invoices?: ExcelImportInvoice[];
 }): ExcelImportResult {
   let addedAccounts = 0;
   let skippedAccounts = 0;
@@ -189,10 +205,198 @@ function importExcelData(imp: {
     store.openingBalances[fy.key][String(r.account)] = entry;
     setOpening++;
   }
+
+  // 期初發票：寫入 salesInvoices / purchaseInvoices（來源='opening'）
+  let setInvoices = 0;
+  let invoiceErrors = 0;
+  const invoiceTotals = new Map<string, number>(); // key: fy|kind|party → 總分
+  for (const inv of imp.invoices || []) {
+    const fyKey = String(inv.fy || '').trim();
+    const party = String(inv.party || '').trim();
+    const no = String(inv.no || '').trim();
+    const date = String(inv.date || '').trim();
+    const kind = String(inv.kind || '').trim().toUpperCase();
+    const amount = Number(inv.amount);
+    const fy = store.fiscalYears.find((f) => f.key === fyKey);
+    if (!fy || !party || !no || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(amount) || amount <= 0 || (kind !== 'AR' && kind !== 'AP')) {
+      invoiceErrors++;
+      continue;
+    }
+    const cents = dollarsToCents(amount);
+    const row: InvoiceRow = [date, no, party, cents, 'opening'];
+    if (kind === 'AR') {
+      // 去重：同財年同發票號跳過
+      if (!store.salesInvoices.some((x) => x[1] === no)) {
+        store.salesInvoices.push(row);
+        setInvoices++;
+      }
+    } else {
+      if (!store.purchaseInvoices.some((x) => x[1] === no)) {
+        store.purchaseInvoices.push(row);
+        setInvoices++;
+      }
+    }
+    const tkey = fyKey + '|' + kind + '|' + party;
+    invoiceTotals.set(tkey, (invoiceTotals.get(tkey) || 0) + cents);
+  }
+
+  // 校驗：每個客嘅發票總數要等於期初數
+  const invoiceMismatch: string[] = [];
+  for (const [tkey, total] of invoiceTotals) {
+    const [fyKey, kind, party] = tkey.split('|');
+    const acctName = (kind === 'AR' ? 'Accounts Receivable of ' : 'Accounts Payable of ') + party;
+    const obRaw = store.openingBalances[fyKey] && store.openingBalances[fyKey][acctName];
+    if (!obRaw) {
+      invoiceMismatch.push(party + '（無期初數）');
+      continue;
+    }
+    const ob = obRaw as { debit?: number; credit?: number };
+    const obCents = (ob.debit || 0) + (ob.credit || 0);
+    if (Math.abs(obCents - total) > 0) {
+      invoiceMismatch.push(party + '（發票 ' + (total / 100).toFixed(2) + ' vs 期初 ' + (obCents / 100).toFixed(2) + '）');
+    }
+  }
+
   renderAccounts();
   renderReport();
   renderKPIs();
-  return { addedAccounts, skippedAccounts, setOpening, openingErrors };
+  return { addedAccounts, skippedAccounts, setOpening, openingErrors, setInvoices, invoiceErrors, invoiceMismatch };
+}
+
+/* ---------- 年結自動結轉（桌面版獨有，v3.26.0） ----------
+ * previewRollover(fromKey): 計出上年 closing，預覽下年 opening
+ * executeRollover(fromKey, toKey): 寫入下年期初數＋期初發票
+ * 規則：
+ * - 資產／負債／權益：closing → opening（按科目類別自動判斷，新科目自動包埋）
+ * - AR/AP：未找清嘅發票逐張帶過去（唔係得個總數）
+ * - 收入／成本／費用：唔帶，歸零
+ */
+export interface RolloverAccountPreview {
+  name: string;
+  type: string;
+  closing: number; // 分
+}
+export interface RolloverInvoicePreview {
+  kind: 'AR' | 'AP';
+  party: string;
+  no: string;
+  date: string;
+  outstanding: number; // 分
+}
+export interface RolloverPreview {
+  fromLabel: string;
+  toLabel: string;
+  accounts: RolloverAccountPreview[];
+  invoices: RolloverInvoicePreview[];
+  invoiceParties: string[];
+}
+
+export function previewRollover(fromKey: string): RolloverPreview | null {
+  const fromFy = store.fiscalYears.find((f) => f.key === fromKey);
+  if (!fromFy) return null;
+  const toStart = fromFy.start + 1;
+  const toLabel = 'FY' + toStart + '/' + String(toStart + 1).slice(-2);
+
+  const accounts: RolloverAccountPreview[] = [];
+  for (const a of store.accounts) {
+    if (!['資產', '負債', '權益'].includes(a.type)) continue;
+    const bal = accountBalance(a, fromFy);
+    if (bal === 0) continue;
+    accounts.push({ name: a.name, type: a.type, closing: bal });
+  }
+
+  // AR/AP 未找清發票：用 invoiceMatches 搵出嚟，計 outstanding
+  const invoices: RolloverInvoicePreview[] = [];
+  const parties = new Set<string>();
+  for (const a of store.accounts) {
+    let kind: 'AR' | 'AP' | '' = '';
+    let party = '';
+    if (a.name.startsWith('Accounts Receivable of ')) {
+      kind = 'AR';
+      party = a.name.replace('Accounts Receivable of ', '');
+    } else if (a.name.startsWith('Accounts Payable of ')) {
+      kind = 'AP';
+      party = a.name.replace('Accounts Payable of ', '');
+    }
+    if (!kind) continue;
+    parties.add(party);
+  }
+  // 簡化：用現有 openingInvoiceDetails＋sales/purchaseInvoices 計 outstanding
+  // 實際用 allocation 記錄計每張單剩幾多
+  const ctx = {
+    salesInvoices: store.salesInvoices,
+    purchaseInvoices: store.purchaseInvoices,
+    allocations: store.allocations,
+    openingBalances: store.openingBalances,
+    vouchers: store.vouchers,
+    accounts: store.accounts,
+  };
+  for (const party of parties) {
+    for (const kind of ['AR', 'AP'] as const) {
+      const acctName = (kind === 'AR' ? 'Accounts Receivable of ' : 'Accounts Payable of ') + party;
+      if (!store.accounts.some((a) => a.name === acctName)) continue;
+      try {
+        const invs = invoiceMatches(kind, party, fromFy, ctx as any);
+        for (const inv of invs) {
+          const total = inv[3] as number;
+          const alloc = allocatedTotal(kind, inv[1], fromFy, store.allocations);
+          const out = total - alloc;
+          if (out > 0) {
+            invoices.push({ kind, party, no: inv[1], date: inv[0], outstanding: out });
+          }
+        }
+      } catch (e) { /* 忽略 */ }
+    }
+  }
+
+  return {
+    fromLabel: fromFy.label,
+    toLabel,
+    accounts,
+    invoices,
+    invoiceParties: [...parties],
+  };
+}
+
+export function executeRollover(fromKey: string, toKey: string): { accounts: number; invoices: number } {
+  const preview = previewRollover(fromKey);
+  if (!preview) return { accounts: 0, invoices: 0 };
+  const toFy = store.fiscalYears.find((f) => f.key === toKey);
+  if (!toFy) return { accounts: 0, invoices: 0 };
+
+  let accCount = 0;
+  store.openingBalances[toKey] = store.openingBalances[toKey] || {};
+  for (const a of preview.accounts) {
+    const acct = store.accounts.find((x) => x.name === a.name);
+    if (!acct) continue;
+    // 按科目借貸方向寫入
+    const entry = acct.side === 'dr'
+      ? { debit: a.closing as any, credit: 0 as any }
+      : { debit: 0 as any, credit: a.closing as any };
+    store.openingBalances[toKey][a.name] = entry;
+    accCount++;
+  }
+
+  let invCount = 0;
+  for (const inv of preview.invoices) {
+    const row: InvoiceRow = [inv.date, inv.no, inv.party, inv.outstanding as any, 'opening'];
+    if (inv.kind === 'AR') {
+      if (!store.salesInvoices.some((x) => x[1] === inv.no)) {
+        store.salesInvoices.push(row);
+        invCount++;
+      }
+    } else {
+      if (!store.purchaseInvoices.some((x) => x[1] === inv.no)) {
+        store.purchaseInvoices.push(row);
+        invCount++;
+      }
+    }
+  }
+
+  renderAccounts();
+  renderReport();
+  renderKPIs();
+  return { accounts: accCount, invoices: invCount };
 }
 
 declare global {
@@ -228,6 +432,9 @@ export interface DesktopBridge {
   parseVoucherImport: (rows: (string | number)[][]) => ParsedVoucherImport;
   importVouchers: typeof importVouchers;
   renderVoucherList: typeof renderVoucherList;
+  /** 年結自動結轉（v3.26.0） */
+  previewRollover: typeof previewRollover;
+  executeRollover: typeof executeRollover;
   /** 刪除 voucher 前嘅資訊（確認 dialog 用）；搵唔到回 null */
   getVoucherDeleteInfo: (no: string) => {
     no: string; date: string; type: string; desc: string;
@@ -256,7 +463,7 @@ export interface DesktopBridge {
 
 /** 桌面版 bridge（tauri-glue.js 經呢度攞 app 功能）。 */
 const bridge: DesktopBridge = {
-  desktopVersion: '3.25.2',
+  desktopVersion: '3.26.0',
   createBackupPayload,
   validateBackup,
   prepareRestore,
@@ -278,6 +485,8 @@ const bridge: DesktopBridge = {
   importVouchers,
   nextVoucherNumberFor,
   renderVoucherList,
+  previewRollover,
+  executeRollover,
   /** v3.25.2：按編號攞 voucher（操作日誌用） */
   getVoucher: (no: string) => {
     const v = store.vouchers.find((x) => x.no === no);
