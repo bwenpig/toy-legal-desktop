@@ -52,6 +52,7 @@ async function sqlInit(){
     execute: function(query, values){ return invoke('plugin:sql|execute', { db: dbHandle, query: query, values: values || [] }); },
     select: function(query, values){ return invoke('plugin:sql|select', { db: dbHandle, query: query, values: values || [] }); }
   };
+  opLogTableReady = false; // v3.25.2：切換數據庫後 op_logs 表要重建
   return DB.initDatabase(dbPort);
 }
 /* v1 遺留 kv 讀取（只供 migration 用） */
@@ -354,6 +355,85 @@ function schedulePersist(){
   persistTimer = setTimeout(persistNow, 1500);
 }
 
+/* ---------- v3.25.2：操作日誌 op_logs ----------
+ * 目的：客戶有問題時，喺設置頁匯出操作日誌交俾開發者分析定位。
+ * 每條：ts(ISO8601+時區)｜app/core｜session｜actor｜op｜entity｜detail｜before/after｜result｜fiscal_year｜os */
+var opLogSession = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
+var opLogActor = '';
+var opLogTableReady = false;
+function opLogTs(d){
+  d = d || new Date();
+  var pad = function(n){ return String(n).padStart(2, '0'); };
+  var off = -d.getTimezoneOffset(), sign = off >= 0 ? '+' : '-', a = Math.abs(off);
+  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + 'T' +
+    pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()) +
+    sign + pad(Math.floor(a / 60)) + ':' + pad(a % 60);
+}
+function opLogOs(){
+  try{
+    var p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+    p = String(p).toLowerCase();
+    if(p.indexOf('mac') >= 0) return 'darwin';
+    if(p.indexOf('win') >= 0) return 'win32';
+    if(p.indexOf('linux') >= 0) return 'linux';
+    return p || 'unknown';
+  }catch(e){ return 'unknown'; }
+}
+var OPLOG_OS = opLogOs();
+async function opLogEnsureTable(){
+  if(opLogTableReady) return;
+  await dbPort.execute(
+    'CREATE TABLE IF NOT EXISTS op_logs (' +
+    'id INTEGER PRIMARY KEY AUTOINCREMENT,' +
+    'ts TEXT NOT NULL,' +
+    'ts_ms INTEGER NOT NULL,' +
+    'app TEXT NOT NULL,' +
+    'core TEXT NOT NULL,' +
+    'session TEXT NOT NULL,' +
+    'actor TEXT,' +
+    'op TEXT NOT NULL,' +
+    'entity TEXT,' +
+    'detail TEXT,' +
+    '"before" TEXT,' +
+    '"after" TEXT,' +
+    'result TEXT NOT NULL,' +
+    'fiscal_year TEXT,' +
+    'os TEXT)'
+  );
+  await dbPort.execute('CREATE INDEX IF NOT EXISTS idx_op_logs_ts ON op_logs(ts_ms)');
+  await dbPort.execute('CREATE INDEX IF NOT EXISTS idx_op_logs_op ON op_logs(op)');
+  opLogTableReady = true;
+}
+function opLogStr(v){
+  if(v === null || v === undefined) return null;
+  return (typeof v === 'string') ? v : JSON.stringify(v);
+}
+async function writeOpLog(entry){
+  try{
+    if(!dbPort) return;
+    await opLogEnsureTable();
+    var now = new Date();
+    var fy = null;
+    try{ fy = TG.fiscalLabel ? String(TG.fiscalLabel()) : null; }catch(e){}
+    await dbPort.execute(
+      'INSERT INTO op_logs (ts, ts_ms, app, core, session, actor, op, entity, detail, "before", "after", result, fiscal_year, os)' +
+      ' VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [opLogTs(now), now.getTime(), TG.desktopVersion || '', '3.15.1', opLogSession,
+       opLogActor || null, entry.op || 'unknown',
+       opLogStr(entry.entity), opLogStr(entry.detail),
+       opLogStr(entry.before), opLogStr(entry.after),
+       entry.result || 'ok', fy, OPLOG_OS]
+    );
+    // 上限：只保留最近 10,000 條或 90 日，超咗自動清最舊
+    await dbPort.execute(
+      'DELETE FROM op_logs WHERE id NOT IN (SELECT id FROM op_logs ORDER BY ts_ms DESC, id DESC LIMIT 10000)'
+    );
+    await dbPort.execute(
+      'DELETE FROM op_logs WHERE ts_ms < ?',
+      [now.getTime() - 90 * 24 * 3600 * 1000]
+    );
+  }catch(e){ console.error('[desktop] 操作日誌寫入失敗：', e); }
+}
 /* ---------- 5. 啟動 ---------- */
 async function startup(){
   try{
@@ -387,7 +467,28 @@ async function startup(){
           var rows = body.querySelectorAll('tr');
           for(var i = 0; i < rows.length; i++){
             var row = rows[i];
-            if(row.querySelector('.attachment-btn')) continue; // 呢行已處理
+            // v3.25.2：每行加「刪除」掣（桌面獨有，web-src 原生 renderVoucherList 無）
+            try{
+              var actionsDiv = row.querySelector('.voucher-list-actions');
+              if(actionsDiv && !actionsDiv.querySelector('.delete-voucher-btn')){
+                var vCells = row.querySelectorAll('td');
+                var vb = vCells.length > 1 && vCells[1].querySelector('b');
+                var vNo = vb ? vb.textContent.trim() : '';
+                if(vNo){
+                  (function(no){
+                    var delBtn = document.createElement('button');
+                    delBtn.className = 'btn danger delete-voucher-btn';
+                    delBtn.type = 'button';
+                    delBtn.textContent = '刪除';
+                    delBtn.setAttribute('data-no', no);
+                    delBtn.style.marginLeft = '6px';
+                    delBtn.addEventListener('click', function(){ handleDeleteVoucher(no); });
+                    actionsDiv.appendChild(delBtn);
+                  })(vNo);
+                }
+              }
+            }catch(de){ console.error('[desktop] voucher 刪除掣加入失敗：', de); }
+            if(row.querySelector('.attachment-btn')) continue; // 呢行已處理附件掣
             var editBtn = row.querySelector('.edit-voucher');
             if(!editBtn) continue;
             var idx = Number(editBtn.getAttribute('data-index'));
@@ -420,6 +521,154 @@ async function startup(){
       }
     }
   }catch(e){ console.error('[desktop] voucher list attachment observer failed:', e); }
+
+  /* v3.25.2：刪除 voucher（桌面獨有；web-src 原生無刪除功能）。
+   * 流程：確認 dialog（編號＋金額＋摘要）→ TG.deleteVoucher（反過賬＋清對銷＋移除＋重繪）
+   * → audit 寫入 deleted_vouchers 表 → 即時 persistNow 寫庫。 */
+  async function handleDeleteVoucher(no){
+    try{
+      if(!TG.getVoucherDeleteInfo || !TG.deleteVoucher){
+        setStatus('刪除功能未就緒，請重開 App'); return;
+      }
+      var info = TG.getVoucherDeleteInfo(no);
+      if(!info){ setStatus('搵唔到 voucher ' + no); return; }
+      var msg = '確定刪除呢張 voucher？\n\n' +
+        '編號：' + info.no + '\n' +
+        '日期：' + info.date + '\n' +
+        '摘要：' + info.desc + '\n' +
+        '金額：' + fmtCentsPlain(info.amountCents) + '\n' +
+        (info.attachmentCount ? '附件：' + info.attachmentCount + ' 個（會一併刪除）\n' : '') +
+        (info.allocationCount ? '對銷：' + info.allocationCount + ' 筆（會回滾，發票恢復 outstanding）\n' : '') +
+        '\n刪除後自動重過賬，試算表保持平衡；刪除記錄會留底。';
+      if(!confirm(msg)) return; // 用戶取消
+      var snapshot = TG.deleteVoucher(info.no);
+      if(!snapshot){ setStatus('刪除失敗：搵唔到 ' + info.no); return; }
+      try{
+        await dbPort.execute(
+          'CREATE TABLE IF NOT EXISTS deleted_vouchers (' +
+          'id INTEGER PRIMARY KEY AUTOINCREMENT,' +
+          'voucher_no TEXT NOT NULL,' +
+          'deleted_at TEXT NOT NULL DEFAULT (datetime(\'now\')),' +
+          'voucher_json TEXT NOT NULL)'
+        );
+        await dbPort.execute(
+          'INSERT INTO deleted_vouchers (voucher_no, voucher_json) VALUES (?, ?)',
+          [info.no, JSON.stringify(snapshot)]
+        );
+      }catch(ae){ console.error('[desktop] 刪除記錄寫入失敗：', ae); }
+      await persistNow(); // 即時寫庫，唔等 debounce
+      await writeOpLog({
+        op: 'voucher.delete',
+        entity: { kind: 'voucher', no: info.no },
+        detail: '刪除 voucher（金額分：' + info.amountCents + '，附件 ' + info.attachmentCount + ' 個，對銷 ' + info.allocationCount + ' 筆已回滾）',
+        before: { no: info.no, date: info.date, desc: info.desc, amountCents: info.amountCents,
+                  lines: snapshot.lines ? snapshot.lines.length : 0,
+                  attachments: info.attachmentCount, allocations: info.allocationCount },
+        after: { deleted: true },
+        result: 'ok'
+      });
+      setStatus('已刪除 voucher ' + info.no);
+    }catch(e){
+      console.error('[desktop] 刪除 voucher 失敗：', e);
+      setStatus('刪除失敗：' + (e.message || e));
+    }
+  }
+
+  /* 登入追蹤：body 變成 authenticated 即記低 actor＋寫 login log */
+  try{
+    var loginObs = new MutationObserver(function(){
+      try{
+        if(document.body.classList.contains('authenticated') && !opLogActor){
+          var lu = document.getElementById('loginUser');
+          opLogActor = (lu && lu.value ? String(lu.value).trim() : '') || 'admin';
+          writeOpLog({ op: 'login', detail: '用戶登入', result: 'ok' });
+        }
+      }catch(e){}
+    });
+    loginObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  }catch(e){}
+  /* 全局錯誤：記低堆棧第一行，唔吞 */
+  window.addEventListener('error', function(ev){
+    try{
+      var msg = String((ev && ev.message) || 'unknown error');
+      var stack1 = '';
+      try{ stack1 = String((ev && ev.error && ev.error.stack) || '').split('\n')[1] || ''; }catch(e){}
+      writeOpLog({ op: 'error', detail: msg + (stack1 ? ' ＠' + stack1.trim() : ''), result: 'error' });
+    }catch(e){}
+  });
+  window.addEventListener('unhandledrejection', function(ev){
+    try{
+      var r = ev && ev.reason;
+      var msg = String((r && (r.message || r)) || 'unhandled rejection');
+      writeOpLog({ op: 'error', detail: 'unhandledrejection: ' + msg, result: 'error' });
+    }catch(e){}
+  });
+  /* voucher.create／update：postBtn capture 快照 before，toast 成功訊號寫 log。
+   * web core 過賬成功會喺 #postToast 顯示「✓ B100126 已過賬…」／「✓ B100126 已儲存修改、重新過賬…」。 */
+  /* report.generate：報表掣點擊即記（報表名＋月份篩選） */
+  document.addEventListener('click', function(e){
+    try{
+      var t = e.target;
+      if(!t || !t.getAttribute) return;
+      var rb = t.closest ? t.closest('[data-report]') : null;
+      if(!rb) return;
+      var rkey = rb.getAttribute('data-report');
+      var rlabel = (rb.textContent || rkey).trim();
+      var period = '';
+      try{ period = TG.reportPeriodLabel ? String(TG.reportPeriodLabel() || '') : ''; }catch(e2){}
+      writeOpLog({ op: 'report.generate', detail: '產生報表：' + rlabel + (period ? '（' + period + '）' : '（全年）'), after: { report: rkey, period: period || '全年' }, result: 'ok' });
+    }catch(e3){}
+  }, true);
+  var pendingPostBefore = null;
+  document.addEventListener('click', function(e){
+    try{
+      var t = e.target;
+      if(!t || t.id !== 'postBtn') return;
+      var noEl = document.getElementById('voucherNoInput');
+      var no = noEl ? String(noEl.value || '').trim() : '';
+      var isEdit = /修改/.test(t.textContent || '');
+      var before = null;
+      try{ before = (isEdit && no && TG.getVoucher) ? TG.getVoucher(no) : null; }catch(e2){}
+      pendingPostBefore = { no: no, isEdit: isEdit, before: before, at: Date.now() };
+    }catch(e){}
+  }, true);
+  try{
+    var toastObs = new MutationObserver(function(){
+      try{
+        var toast = document.getElementById('postToast');
+        if(!toast || !toast.classList.contains('show')) return;
+        var txt = String(toast.textContent || '');
+        var m = txt.match(/✓\s*(\S+)\s*已(儲存修改、重新)?過賬/);
+        if(!m || !pendingPostBefore) return;
+        if(Date.now() - pendingPostBefore.at > 10000) return; // 太舊嘅快照唔用
+        var pno = m[1], isUpdate = !!m[2];
+        var after = null;
+        try{ after = TG.getVoucher ? TG.getVoucher(pno) : null; }catch(e2){}
+        var beforeSum = pendingPostBefore.before ? {
+          no: pendingPostBefore.before.no, date: pendingPostBefore.before.date,
+          desc: pendingPostBefore.before.desc,
+          amountCents: (pendingPostBefore.before.lines || []).reduce(function(s, l){ return s + (l.debit || 0); }, 0),
+          lines: (pendingPostBefore.before.lines || []).length
+        } : null;
+        var afterSum = after ? {
+          no: after.no, date: after.date, desc: after.desc,
+          amountCents: (after.lines || []).reduce(function(s, l){ return s + (l.debit || 0); }, 0),
+          lines: (after.lines || []).length,
+          attachments: (after.attachments || []).length
+        } : null;
+        writeOpLog({
+          op: isUpdate ? 'voucher.update' : 'voucher.create',
+          entity: { kind: 'voucher', no: pno },
+          detail: (isUpdate ? '修改並重新過賬' : '新增過賬') +
+            (afterSum ? '（金額分：' + afterSum.amountCents + '，' + afterSum.lines + ' 行，分錄' + afterSum.attachments + ' 附件）' : ''),
+          before: beforeSum, after: afterSum, result: 'ok'
+        });
+        pendingPostBefore = null;
+      }catch(e){}
+    });
+    var postToastEl = document.getElementById('postToast');
+    if(postToastEl) toastObs.observe(postToastEl, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  }catch(e){}
 
   // 工具欄 JSON 還原（app 原生 modal）完成後：無論 dbWriteEnabled 係咩狀態，
   // 只要有數據就直接寫庫。唔依賴 debounced persist，確保一定寫入。
@@ -904,9 +1153,16 @@ async function exportExcelReports(){
     try{ periodLabel = TG.reportPeriodLabel ? TG.reportPeriodLabel() : ''; }catch(e){}
     setStatus('Excel 已匯出（9 份報表' + (periodLabel ? '，' + periodLabel : '') + '，' + attCount + ' 個附件）→ zip' +
       (errors.length ? '；' + errors.length + ' 份報表有問題' : ''));
+    await writeOpLog({
+      op: 'export.report',
+      detail: '匯出 Excel 報表（9 份' + (periodLabel ? '，' + periodLabel : '全年') + '，附件 ' + attCount + ' 個 → zip）',
+      after: { sheets: 9, period: periodLabel || '全年', attachments: attCount, errors: errors.length },
+      result: errors.length ? 'error' : 'ok'
+    });
   }catch(e){
     console.error('[desktop] excel export failed:', e);
     setStatus('匯出失敗：' + (e.message || e));
+    await writeOpLog({ op: 'export.report', detail: '匯出 Excel 報表失敗', result: 'error', after: { message: String(e.message || e).split('\n')[0] } });
   }
 }
 
@@ -1008,6 +1264,7 @@ async function importExcelData(){
  * 入口：側欄 nav 注入「桌面設置」掣（無 data-route，web-src navigate() 唔會理）。
  * 開啟時隱藏 #appShell（web app root），關閉還原。全部 DOM／CSS 由呢度擁有。 */
 var DESKTOP_CHANGELOG = [
+  ['3.25.2', 'voucher 列表加返「刪除」掣：刪除前確認（顯示編號＋金額＋摘要）；刪除後自動重過賬；已對銷嘅收款會回滾（發票恢復 outstanding）；附件一併刪除；刪除記錄寫入 deleted_vouchers 表留底。新增操作日誌（op_logs 表）：記錄入賬／修改／刪除、匯入、匯出、報表、登入同錯誤（含版本＋session＋用戶＋財年＋OS），設置頁可按日期匯出 JSON，只保留最近 10,000 條或 90 日。'],
   ['3.25.1', '修復「修改」公司名撳咗無反應：Tauri 唔支援 window.prompt，轉用自製輸入 modal（登入補錄同修改都用同一個）。'],
   ['3.25.0', '新增公司名：存 app_state kv 表；空庫登入提示補錄；工具欄顯示＋修改；匯出報表／Voucher 帶公司名。'],
   ['3.24.2', '修復匯入附件對應錯位（改用 voucherNo→路徑映射）；匯出 Excel 報表改為 zip（含 Journal 對應月份附件，按 voucher 號分目錄）。'],
@@ -1135,6 +1392,11 @@ function injectSettingsView(){
     '<th>ID</th><th>日期</th><th>摘要</th><th>分錄</th><th>金額</th><th>附件</th><th>操作</th>' +
     '</tr></thead><tbody id="tgPendList"></tbody></table></div>' +
     '<p class="muted small">匯入會經正常驗證＋過賬；附件（手寫單相片）會一齊入賬套。</p></section>' +
+    '<section class="tgset-sec"><h3>操作日誌 <span class="muted small">（客戶有問題時匯出交俾開發者分析定位）</span></h3>' +
+    '<p><label>由 <input type="date" id="tgOpLogFrom"></label> <label>到 <input type="date" id="tgOpLogTo"></label> ' +
+    '<button class="btn" id="tgOpLogExport" type="button">匯出操作日誌 (JSON)…</button> ' +
+    '<span class="muted small" id="tgOpLogCount"></span></p>' +
+    '<p class="muted small">記錄 voucher 入賬／修改／刪除、匯入、匯出、報表產生、登入同錯誤；只保留最近 10,000 條或 90 日，超咗自動清最舊。</p></section>' +
     '<div class="tgset-status" id="tgSettingsStatus" role="status" aria-live="polite"></div>';
   document.body.appendChild(div);
   document.getElementById('tgSettingsClose').addEventListener('click', closeSettings);
@@ -1151,6 +1413,8 @@ function injectSettingsView(){
   document.getElementById('tgMcpCopyCfg').addEventListener('click', copyMcpConfig);
   document.getElementById('tgMcpCopyPath').addEventListener('click', copyMcpDbPath);
   document.getElementById('tgPendRefresh').addEventListener('click', refreshPendingVouchers);
+  document.getElementById('tgOpLogExport').addEventListener('click', onExportOpLog);
+  refreshOpLogCount();
   document.addEventListener('keydown', function(e){
     var v = document.getElementById('tgSettingsView');
     if(e.key === 'Escape' && v && !v.hidden) closeSettings();
@@ -1480,6 +1744,62 @@ function centsToStr(c){
   var n = Math.round(Number(c) || 0), neg = n < 0, a = Math.abs(n);
   return (neg ? '-' : '') + Math.floor(a / 100) + '.' + String(a % 100).padStart(2, '0');
 }
+/* ---------- v3.25.2：操作日誌匯出 ---------- */
+async function refreshOpLogCount(){
+  try{
+    var el = document.getElementById('tgOpLogCount');
+    if(!el) return;
+    await opLogEnsureTable();
+    var rows = await dbPort.select('SELECT COUNT(*) AS c, MIN(ts) AS mn, MAX(ts) AS mx FROM op_logs');
+    var c = rows && rows[0] ? rows[0].c : 0;
+    el.textContent = c ? ('共 ' + c + ' 條（' + String(rows[0].mn || '').slice(0, 10) + ' 至 ' + String(rows[0].mx || '').slice(0, 10) + '）') : '暫無記錄';
+  }catch(e){}
+}
+function opLogParseField(v){
+  if(v === null || v === undefined) return null;
+  if(typeof v !== 'string') return v;
+  try{ return JSON.parse(v); }catch(e){ return v; }
+}
+async function onExportOpLog(){
+  try{
+    await opLogEnsureTable();
+    var fromEl = document.getElementById('tgOpLogFrom');
+    var toEl = document.getElementById('tgOpLogTo');
+    var fromMs = (fromEl && fromEl.value) ? new Date(fromEl.value + 'T00:00:00').getTime() : 0;
+    var toMs = (toEl && toEl.value) ? new Date(toEl.value + 'T23:59:59').getTime() : Date.now();
+    if(isNaN(fromMs)) fromMs = 0;
+    if(isNaN(toMs)) toMs = Date.now();
+    var rows = await dbPort.select(
+      'SELECT ts, app, core, session, actor, op, entity, detail, "before", "after", result, fiscal_year, os' +
+      ' FROM op_logs WHERE ts_ms >= ? AND ts_ms <= ? ORDER BY ts_ms ASC, id ASC',
+      [fromMs, toMs]
+    );
+    var logs = rows.map(function(r){
+      return {
+        ts: r.ts, app: r.app, core: r.core, session: r.session, actor: r.actor,
+        op: r.op, entity: opLogParseField(r.entity), detail: opLogParseField(r.detail),
+        before: opLogParseField(r.before), after: opLogParseField(r.after),
+        result: r.result, fiscal_year: r.fiscal_year, os: r.os
+      };
+    });
+    var payload = {
+      exportedAt: opLogTs(new Date()),
+      app: TG.desktopVersion || '', core: '3.15.1',
+      from: (fromEl && fromEl.value) || null, to: (toEl && toEl.value) || null,
+      count: logs.length, logs: logs
+    };
+    var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    var fname = 'toys-gallery-op-log-' + new Date().toISOString().slice(0, 10) + '.json';
+    var dl = await nativeDownload(blob, fname, '匯出操作日誌');
+    if(dl && dl.desktopCancelled){ setSettingsStatus('已取消匯出'); return; }
+    setSettingsStatus('操作日誌已匯出：' + logs.length + ' 條' + (dl && dl.desktopSaved ? '（' + dl.desktopSaved + '）' : ''));
+    refreshOpLogCount();
+    await writeOpLog({ op: 'settings.change', detail: '匯出操作日誌 JSON（' + logs.length + ' 條）', result: 'ok' });
+  }catch(e){
+    console.error('[desktop] 匯出操作日誌失敗：', e);
+    setSettingsStatus('匯出操作日誌失敗：' + (e.message || e));
+  }
+}
 async function refreshPendingVouchers(){
   var statsEl = document.getElementById('tgPendStats'),
       wrap = document.getElementById('tgPendListWrap'),
@@ -1631,10 +1951,17 @@ async function doImportJson(){
     await refreshTableList();
     var dbp = await currentDbFilePath();
     setSettingsStatus('匯入完成：' + vCount + ' 張 voucher，' + aCount + ' 個科目，已寫入：' + dbp + '。舊數據庫已備份。');
+    await writeOpLog({
+      op: 'import.json',
+      detail: '設置頁 JSON 匯入完成：' + vCount + ' 張 voucher，' + aCount + ' 個科目（檔：' + (imp.fileName || '未知') + '）',
+      after: { vouchers: vCount, accounts: aCount },
+      result: 'ok'
+    });
   }catch(e){
     console.error('[desktop] settings import 失敗：', e);
     failMsg = (e.message || e);
     setSettingsStatus('匯入失敗：' + failMsg + '（目前數據庫已備份，未被覆蓋）');
+    await writeOpLog({ op: 'import.json', detail: '設置頁 JSON 匯入失敗', result: 'error', after: { message: String(failMsg).split('\n')[0] } });
   }finally{
     dbWriteEnabled = true;
     lastStableHash = null;
@@ -1682,6 +2009,7 @@ async function downloadVoucherTemplate(){
     if(!path){ setSettingsStatus('已取消下載'); return; }
     await fsWriteBytes(path, new Uint8Array(out));
     setSettingsStatus('範本已下載（借／貸方科目有下拉選單）。將範本＋附件放喺同一個資料夾，填好後用「從資料夾匯入 Voucher…」匯入（記得刪除示例行）。');
+    await writeOpLog({ op: 'export.excel', detail: '下載 Voucher 匯入範本（檔：Toys-Gallery-voucher-import-template.xlsx）', result: 'ok' });
   }catch(e){ setSettingsStatus('下載失敗：' + (e.message || e)); }
 }
 /* 注入科目下拉選單：喺「範本」表嘅 E／G 欄加 list validation，參照「科目清單」表 */
@@ -1875,10 +2203,17 @@ async function doImportVouchers(){
     if(attFail.length) msg += '附件失敗 ' + attFail.length + ' 個：' + attFail.slice(0, 3).join('；') + (attFail.length > 3 ? '…' : '');
     msg += '舊數據庫已備份。';
     setSettingsStatus(msg);
+    await writeOpLog({
+      op: 'import.folder',
+      detail: '資料夾匯入 Excel：' + res.imported + ' 張 voucher（' + res.voucherNos.slice(0, 5).join('、') + '），附件 ' + attOk + ' 個成功／' + attFail.length + ' 個失敗（資料夾：' + (excelPath || '未知') + '）',
+      after: { imported: res.imported, voucherNos: res.voucherNos.slice(0, 10), attOk: attOk, attFail: attFail.length },
+      result: 'ok'
+    });
   }catch(e){
     console.error('[desktop] voucher excel import 失敗：', e);
     dbWriteEnabled = true;
     setSettingsStatus('匯入失敗：' + (e.message || e));
+    await writeOpLog({ op: 'import.folder', detail: '資料夾匯入 Excel 失敗', result: 'error', after: { message: String(e.message || e).split('\n')[0] } });
   }
 }
 

@@ -3168,7 +3168,7 @@
     return { addedAccounts, skippedAccounts, setOpening, openingErrors };
   }
   var bridge = {
-    desktopVersion: "3.25.1",
+    desktopVersion: "3.25.2",
     createBackupPayload,
     validateBackup,
     prepareRestore,
@@ -3190,6 +3190,51 @@
     importVouchers,
     nextVoucherNumberFor,
     renderVoucherList,
+    /** v3.25.2：按編號攞 voucher（操作日誌用） */
+    getVoucher: (no) => {
+      const v = store.vouchers.find((x) => x.no === no);
+      return v ? JSON.parse(JSON.stringify(v)) : null;
+    },
+    /** v3.25.2：刪除 voucher 前嘅資訊（確認 dialog 用） */
+    getVoucherDeleteInfo: (no) => {
+      const v = store.vouchers.find((x) => x.no === no);
+      if (!v) return null;
+      return {
+        no: v.no,
+        date: v.date,
+        type: v.type,
+        desc: v.desc,
+        amountCents: v.lines.reduce((s, l) => s + l.debit, 0),
+        attachmentCount: (v.attachments || []).length,
+        allocationCount: store.allocations.filter((a) => a.voucher === no).length
+      };
+    },
+    /** v3.25.2：刪除 voucher——反過賬＋清對銷＋移除＋重繪；回傳快照（audit 用） */
+    deleteVoucher: (no) => {
+      const idx = store.vouchers.findIndex((x) => x.no === no);
+      if (idx < 0) return null;
+      const v = store.vouchers[idx];
+      applyVoucherBalance(v, -1);
+      clearVoucherAllocations(v.no);
+      const snapshot = JSON.parse(JSON.stringify(v));
+      const wasEditing = store.editingIndex === idx;
+      store.vouchers.splice(idx, 1);
+      if (wasEditing) {
+        createNewVoucher();
+      } else if (store.editingIndex !== null && store.editingIndex > idx) {
+        store.editingIndex--;
+      }
+      try {
+        document.getElementById("ledgerCount").textContent = String(store.vouchers.filter((item) => dateInFiscalYear2(item.date)).length);
+      } catch {
+      }
+      renderVoucherList();
+      renderLedger();
+      renderReport();
+      renderAccounts();
+      renderKPIs();
+      return snapshot;
+    },
     attachmentButtonHTML,
     bindAttachmentButtons,
     openAttachmentList,

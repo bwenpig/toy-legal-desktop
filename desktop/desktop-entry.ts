@@ -26,7 +26,7 @@ import {
 } from '../web-src/backup';
 import { reportBody, renderReport, renderKPIs } from '../web-src/reports';
 import { renderAccounts, sortAccounts } from '../web-src/accounts';
-import { renderVoucherList, renderInvoiceNumberList, attachmentButtonHTML, bindAttachmentButtons, openAttachmentList } from '../web-src/vouchers';
+import { renderVoucherList, renderInvoiceNumberList, attachmentButtonHTML, bindAttachmentButtons, openAttachmentList, applyVoucherBalance, clearVoucherAllocations, createNewVoucher } from '../web-src/vouchers';
 import { renderLedger } from '../web-src/ledger';
 import { navigate, renderStaffNames } from '../web-src/ui';
 import { dollarsToCents, toCents } from '../web-src/money';
@@ -228,6 +228,15 @@ export interface DesktopBridge {
   parseVoucherImport: (rows: (string | number)[][]) => ParsedVoucherImport;
   importVouchers: typeof importVouchers;
   renderVoucherList: typeof renderVoucherList;
+  /** 刪除 voucher 前嘅資訊（確認 dialog 用）；搵唔到回 null */
+  getVoucherDeleteInfo: (no: string) => {
+    no: string; date: string; type: string; desc: string;
+    amountCents: number; attachmentCount: number; allocationCount: number;
+  } | null;
+  /** 按編號攞 voucher 全量 JSON（操作日誌 before/after 用）；搵唔到回 null */
+  getVoucher: (no: string) => unknown | null;
+  /** 刪除 voucher：反過賬＋清對銷＋移除＋重繪；回傳已刪除快照（audit 用），搵唔到回 null */
+  deleteVoucher: (no: string) => unknown | null;
   attachmentButtonHTML: typeof attachmentButtonHTML;
   bindAttachmentButtons: typeof bindAttachmentButtons;
   getAccountNames: () => string[];
@@ -247,7 +256,7 @@ export interface DesktopBridge {
 
 /** 桌面版 bridge（tauri-glue.js 經呢度攞 app 功能）。 */
 const bridge: DesktopBridge = {
-  desktopVersion: '3.25.1',
+  desktopVersion: '3.25.2',
   createBackupPayload,
   validateBackup,
   prepareRestore,
@@ -269,6 +278,51 @@ const bridge: DesktopBridge = {
   importVouchers,
   nextVoucherNumberFor,
   renderVoucherList,
+  /** v3.25.2：按編號攞 voucher（操作日誌用） */
+  getVoucher: (no: string) => {
+    const v = store.vouchers.find((x) => x.no === no);
+    return v ? JSON.parse(JSON.stringify(v)) : null;
+  },
+  /** v3.25.2：刪除 voucher 前嘅資訊（確認 dialog 用） */
+  getVoucherDeleteInfo: (no: string) => {
+    const v = store.vouchers.find((x) => x.no === no);
+    if (!v) return null;
+    return {
+      no: v.no,
+      date: v.date,
+      type: v.type,
+      desc: v.desc,
+      amountCents: v.lines.reduce((s, l) => s + l.debit, 0),
+      attachmentCount: (v.attachments || []).length,
+      allocationCount: store.allocations.filter((a) => a.voucher === no).length,
+    };
+  },
+  /** v3.25.2：刪除 voucher——反過賬＋清對銷＋移除＋重繪；回傳快照（audit 用） */
+  deleteVoucher: (no: string) => {
+    const idx = store.vouchers.findIndex((x) => x.no === no);
+    if (idx < 0) return null;
+    const v = store.vouchers[idx];
+    applyVoucherBalance(v, -1); // 反過賬：沖銷呢張單對試算表嘅影響
+    clearVoucherAllocations(v.no); // 對銷回滾：發票恢復 outstanding
+    const snapshot = JSON.parse(JSON.stringify(v));
+    const wasEditing = store.editingIndex === idx;
+    store.vouchers.splice(idx, 1);
+    if (wasEditing) {
+      createNewVoucher(); // 刪緊而家編輯緊嗰張：表單重置為新單
+    } else if (store.editingIndex !== null && store.editingIndex > idx) {
+      store.editingIndex--;
+    }
+    try {
+      (document.getElementById('ledgerCount') as HTMLElement).textContent =
+        String(store.vouchers.filter((item) => dateInFiscalYear(item.date)).length);
+    } catch { /* 忽略 */ }
+    renderVoucherList();
+    renderLedger();
+    renderReport();
+    renderAccounts();
+    renderKPIs();
+    return snapshot;
+  },
   attachmentButtonHTML,
   bindAttachmentButtons,
   openAttachmentList,

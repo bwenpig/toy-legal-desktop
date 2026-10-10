@@ -1,0 +1,34 @@
+[
+ {
+  "case": "P0",
+  "finding": "importExcelData 後 10 秒 DB 內 accounts 仍為 0",
+  "fix": "測試腳本改為 dispatch 一次 synthetic click 再 poll DB，貼合產品設計。",
+  "rootCause": "測試問題，非產品 bug。產品設計係事件驅動 persist（任何 click/change/input/submit → debounce 1.5s；另有 visibilitychange flush）。importExcelData 本身唔直接 call schedulePersist。測試用 __TG__ 直接調 API、零 DOM 事件，所以無觸發落庫。真實流程（設置頁撳掣匯入）一定有 click 事件，會正常落庫。",
+  "round": 1,
+  "verified": "第二輪重跑 38/38 PASS（2026-10-10），確認修復有效"
+ },
+ {
+  "case": "C3",
+  "finding": "AR 賬齡 report innerText 搵唔到 INV001／INV002",
+  "fix": "測試改為先 click .drill-trigger 再讀 textContent。",
+  "rootCause": "測試問題。發票明細喺 drill-down 隱藏行（tr.detail-row hidden），innerText 唔包含隱藏元素。產品設計正確（㩒開先睇明細）。",
+  "round": 1,
+  "verified": "第二輪重跑 38/38 PASS（2026-10-10），確認修復有效"
+ },
+ {
+  "case": "F1",
+  "finding": "範本欄數讀出 1（預期 13）",
+  "fix": "測試改讀 wb.Sheets['範本']。",
+  "rootCause": "測試問題。讀咗 SheetNames[0]（「說明」表）而唔係「範本」表。dataValidation=2 證明下拉選單本身無問題。",
+  "round": 1,
+  "verified": "第二輪重跑 38/38 PASS（2026-10-10），確認修復有效"
+ },
+ {
+  "case": "F3",
+  "finding": "備份附件數 0→還原後 1，對唔上",
+  "fix": "測試改為由 vouchers[].attachments 計總數。",
+  "rootCause": "測試問題。createBackupPayload 無頂層 attachments 陣列，附件嵌喺 vouchers[].attachments。還原後 DB 有 1 個附件證明產品正確。",
+  "round": 1,
+  "verified": "第二輪重跑 38/38 PASS（2026-10-10），確認修復有效"
+ }
+]
