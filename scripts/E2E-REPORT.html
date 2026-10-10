@@ -38,79 +38,79 @@ th{background:#f3f4f6;font-size:12px;color:var(--muted)}
 <body>
 <div class="wrap">
 <h1>E2E 自我測試執行報告</h1>
-<div class="meta">執行時間：2026-10-10T02:05:57.716Z ｜ 版本：桌面版 v3.25.2（Web 核心 v3.15.1） ｜ 環境：本地沙箱（headless Chromium + mock Tauri plugin + 真 SQLite node:sqlite）</div>
+<div class="meta">執行時間：2026-10-10T02:18:05.885Z ｜ 版本：桌面版 v3.25.2（Web 核心 v3.15.1） ｜ 環境：本地沙箱（headless Chromium + mock Tauri plugin + 真 SQLite node:sqlite）</div>
 <div class="cards">
 <div class="card"><div class="n">38</div><div class="l">用例總數</div></div>
 <div class="card"><div class="n" style="color:var(--green)">38</div><div class="l">PASS</div></div>
 <div class="card"><div class="n" style="color:var(--muted)">0</div><div class="l">FAIL</div></div>
-<div class="card"><div class="n">146.6<span style="font-size:14px">s</span></div><div class="l">總耗時</div></div>
+<div class="card"><div class="n">147.4<span style="font-size:14px">s</span></div><div class="l">總耗時</div></div>
 </div>
 <h2>用例結果總表</h2>
 <div class="tblwrap"><table>
 <tr><th>#</th><th>用例</th><th>結果</th><th>耗時</th></tr>
-<tr><td>P0</td><td>前置：FY2026 存在＋匯入 6 科目</td><td><span class="badge pass">PASS</span></td><td>2013ms</td></tr>
-<tr><td>A1</td><td>正常銷貨 voucher（借貸平衡＋三簽名）</td><td><span class="badge pass">PASS</span></td><td>6453ms</td></tr>
-<tr><td>A2</td><td>借貸不平被擋（Dr 100／Cr 90）</td><td><span class="badge pass">PASS</span></td><td>1999ms</td></tr>
-<tr><td>A3</td><td>無效科目被擋</td><td><span class="badge pass">PASS</span></td><td>1006ms</td></tr>
-<tr><td>A4</td><td>日期唔喺財年內被擋</td><td><span class="badge pass">PASS</span></td><td>1005ms</td></tr>
+<tr><td>P0</td><td>前置：FY2026 存在＋匯入 6 科目</td><td><span class="badge pass">PASS</span></td><td>2015ms</td></tr>
+<tr><td>A1</td><td>正常銷貨 voucher（借貸平衡＋三簽名）</td><td><span class="badge pass">PASS</span></td><td>6506ms</td></tr>
+<tr><td>A2</td><td>借貸不平被擋（Dr 100／Cr 90）</td><td><span class="badge pass">PASS</span></td><td>2045ms</td></tr>
+<tr><td>A3</td><td>無效科目被擋</td><td><span class="badge pass">PASS</span></td><td>1007ms</td></tr>
+<tr><td>A4</td><td>日期唔喺財年內被擋</td><td><span class="badge pass">PASS</span></td><td>1007ms</td></tr>
 <tr><td>A5</td><td>欠簽名被擋</td><td><span class="badge pass">PASS</span></td><td>1006ms</td></tr>
-<tr><td>B1</td><td>修改金額並重過賬</td><td><span class="badge pass">PASS</span></td><td>4893ms</td></tr>
+<tr><td>B1</td><td>修改金額並重過賬</td><td><span class="badge pass">PASS</span></td><td>4900ms</td></tr>
 <tr><td>B2</td><td>修改後試算表仍平衡</td><td><span class="badge pass">PASS</span></td><td>0ms</td></tr>
-<tr><td>B3</td><td>修改科目觸發報表重分類</td><td><span class="badge pass">PASS</span></td><td>6328ms</td></tr>
-<tr><td>B4</td><td>（觀察）桌面版 voucher 刪除功能</td><td><span class="badge pass">PASS</span></td><td>15ms</td></tr>
-<tr><td>C1</td><td>兩張銷貨發票入賬（INV001／INV002）</td><td><span class="badge pass">PASS</span></td><td>10134ms</td></tr>
-<tr><td>C2</td><td>收款唔指定發票 → FIFO 對銷最舊</td><td><span class="badge pass">PASS</span></td><td>6819ms</td></tr>
-<tr><td>C3</td><td>AR 賬齡餘額（INV001 餘 2,000／INV002 餘 5,000）</td><td><span class="badge pass">PASS</span></td><td>1812ms</td></tr>
-<tr><td>C4</td><td>收款指定發票 INV002</td><td><span class="badge pass">PASS</span></td><td>6827ms</td></tr>
+<tr><td>B3</td><td>修改科目觸發報表重分類</td><td><span class="badge pass">PASS</span></td><td>6310ms</td></tr>
+<tr><td>B4</td><td>（觀察）桌面版 voucher 刪除功能</td><td><span class="badge pass">PASS</span></td><td>8ms</td></tr>
+<tr><td>C1</td><td>兩張銷貨發票入賬（INV001／INV002）</td><td><span class="badge pass">PASS</span></td><td>10136ms</td></tr>
+<tr><td>C2</td><td>收款唔指定發票 → FIFO 對銷最舊</td><td><span class="badge pass">PASS</span></td><td>6818ms</td></tr>
+<tr><td>C3</td><td>AR 賬齡餘額（INV001 餘 2,000／INV002 餘 5,000）</td><td><span class="badge pass">PASS</span></td><td>1833ms</td></tr>
+<tr><td>C4</td><td>收款指定發票 INV002</td><td><span class="badge pass">PASS</span></td><td>6830ms</td></tr>
 <tr><td>C5</td><td>AR 總額勾稽</td><td><span class="badge pass">PASS</span></td><td>0ms</td></tr>
-<tr><td>E1</td><td>試算表生成</td><td><span class="badge pass">PASS</span></td><td>1306ms</td></tr>
-<tr><td>E2</td><td>損益表生成</td><td><span class="badge pass">PASS</span></td><td>1291ms</td></tr>
+<tr><td>E1</td><td>試算表生成</td><td><span class="badge pass">PASS</span></td><td>1322ms</td></tr>
+<tr><td>E2</td><td>損益表生成</td><td><span class="badge pass">PASS</span></td><td>1295ms</td></tr>
 <tr><td>E3</td><td>資產負債表生成</td><td><span class="badge pass">PASS</span></td><td>1302ms</td></tr>
 <tr><td>E4</td><td>AR 賬齡生成</td><td><span class="badge pass">PASS</span></td><td>1305ms</td></tr>
 <tr><td>E5</td><td>AP 賬齡生成</td><td><span class="badge pass">PASS</span></td><td>1298ms</td></tr>
-<tr><td>E6</td><td>採購報告生成</td><td><span class="badge pass">PASS</span></td><td>1290ms</td></tr>
-<tr><td>E7</td><td>銷售報告生成</td><td><span class="badge pass">PASS</span></td><td>1304ms</td></tr>
-<tr><td>E8</td><td>Journal生成</td><td><span class="badge pass">PASS</span></td><td>1299ms</td></tr>
-<tr><td>E9</td><td>Voucher Register生成</td><td><span class="badge pass">PASS</span></td><td>1284ms</td></tr>
-<tr><td>E10</td><td>報表月份篩選（2026-10 單月）</td><td><span class="badge pass">PASS</span></td><td>11212ms</td></tr>
-<tr><td>H1</td><td>有 Detail → Journal 逐行顯示</td><td><span class="badge pass">PASS</span></td><td>7623ms</td></tr>
-<tr><td>H2</td><td>吉 Detail → Journal 用 voucher 摘要</td><td><span class="badge pass">PASS</span></td><td>7537ms</td></tr>
-<tr><td>D1</td><td>新增財年 FY2027</td><td><span class="badge pass">PASS</span></td><td>1794ms</td></tr>
-<tr><td>D2</td><td>新財年入賬唔影響舊年 P&amp;L</td><td><span class="badge pass">PASS</span></td><td>8367ms</td></tr>
-<tr><td>D3</td><td>FIFO 唔跨財年</td><td><span class="badge pass">PASS</span></td><td>8439ms</td></tr>
-<tr><td>D4</td><td>財年下拉隔離 voucher 列表</td><td><span class="badge pass">PASS</span></td><td>2625ms</td></tr>
-<tr><td>F1</td><td>Voucher 範本有科目下拉選單</td><td><span class="badge pass">PASS</span></td><td>1854ms</td></tr>
-<tr><td>F2</td><td>資料夾匯入 Excel＋附件</td><td><span class="badge pass">PASS</span></td><td>5150ms</td></tr>
-<tr><td>F3</td><td>JSON 備份→新庫→還原端到端</td><td><span class="badge pass">PASS</span></td><td>9348ms</td></tr>
-<tr><td>G1</td><td>工具欄修改公司名</td><td><span class="badge pass">PASS</span></td><td>3274ms</td></tr>
-<tr><td>G2</td><td>吉公司名被拒</td><td><span class="badge pass">PASS</span></td><td>1304ms</td></tr>
-<tr><td>G3</td><td>reload 後公司名仲喺度</td><td><span class="badge pass">PASS</span></td><td>4726ms</td></tr>
-<tr><td>G4</td><td>報表匯出標題用公司名</td><td><span class="badge pass">PASS</span></td><td>6054ms</td></tr>
+<tr><td>E6</td><td>採購報告生成</td><td><span class="badge pass">PASS</span></td><td>1295ms</td></tr>
+<tr><td>E7</td><td>銷售報告生成</td><td><span class="badge pass">PASS</span></td><td>1300ms</td></tr>
+<tr><td>E8</td><td>Journal生成</td><td><span class="badge pass">PASS</span></td><td>1333ms</td></tr>
+<tr><td>E9</td><td>Voucher Register生成</td><td><span class="badge pass">PASS</span></td><td>1300ms</td></tr>
+<tr><td>E10</td><td>報表月份篩選（2026-10 單月）</td><td><span class="badge pass">PASS</span></td><td>11265ms</td></tr>
+<tr><td>H1</td><td>有 Detail → Journal 逐行顯示</td><td><span class="badge pass">PASS</span></td><td>7628ms</td></tr>
+<tr><td>H2</td><td>吉 Detail → Journal 用 voucher 摘要</td><td><span class="badge pass">PASS</span></td><td>7541ms</td></tr>
+<tr><td>D1</td><td>新增財年 FY2027</td><td><span class="badge pass">PASS</span></td><td>1816ms</td></tr>
+<tr><td>D2</td><td>新財年入賬唔影響舊年 P&amp;L</td><td><span class="badge pass">PASS</span></td><td>8345ms</td></tr>
+<tr><td>D3</td><td>FIFO 唔跨財年</td><td><span class="badge pass">PASS</span></td><td>8460ms</td></tr>
+<tr><td>D4</td><td>財年下拉隔離 voucher 列表</td><td><span class="badge pass">PASS</span></td><td>2633ms</td></tr>
+<tr><td>F1</td><td>Voucher 範本有科目下拉選單</td><td><span class="badge pass">PASS</span></td><td>2135ms</td></tr>
+<tr><td>F2</td><td>資料夾匯入 Excel＋附件</td><td><span class="badge pass">PASS</span></td><td>5200ms</td></tr>
+<tr><td>F3</td><td>JSON 備份→新庫→還原端到端</td><td><span class="badge pass">PASS</span></td><td>9345ms</td></tr>
+<tr><td>G1</td><td>工具欄修改公司名</td><td><span class="badge pass">PASS</span></td><td>3292ms</td></tr>
+<tr><td>G2</td><td>吉公司名被拒</td><td><span class="badge pass">PASS</span></td><td>1305ms</td></tr>
+<tr><td>G3</td><td>reload 後公司名仲喺度</td><td><span class="badge pass">PASS</span></td><td>4835ms</td></tr>
+<tr><td>G4</td><td>報表匯出標題用公司名</td><td><span class="badge pass">PASS</span></td><td>6053ms</td></tr>
 </table></div>
 <h2>各用例詳情</h2>
-<div class="case"><h3>P0 前置：FY2026 存在＋匯入 6 科目 <span class="badge pass">PASS</span> <span class="note">2013ms</span></h3>
+<div class="case"><h3>P0 前置：FY2026 存在＋匯入 6 科目 <span class="badge pass">PASS</span> <span class="note">2015ms</span></h3>
 <div class="kv"><b>步驟：</b>讀財年 → importExcelData 匯入 6 科目</div>
 <div class="kv"><b>預期：</b>FY2026 涵蓋 2026-10；5 科目入庫</div>
 <div class="kv"><b>實際：</b>FY=2026 accounts=6</div>
 </div>
-<div class="case"><h3>A1 正常銷貨 voucher（借貸平衡＋三簽名） <span class="badge pass">PASS</span> <span class="note">6453ms</span></h3>
+<div class="case"><h3>A1 正常銷貨 voucher（借貸平衡＋三簽名） <span class="badge pass">PASS</span> <span class="note">6506ms</span></h3>
 <div class="kv"><b>步驟：</b>建立 Voucher 頁填單 → Dr AR of Toy Hunters 22,000／Cr Sales 22,000 → 三簽名 → 過賬</div>
 <div class="kv"><b>預期：</b>過賬成功；lines 整數分 2200000；persist 落庫</div>
 <div class="kv"><b>實際：</b>no=T100126 lines=[{&quot;debit_cents&quot;:2200000,&quot;credit_cents&quot;:0},{&quot;debit_cents&quot;:0,&quot;credit_cents&quot;:2200000}]</div>
 <div class="shots"><img src="e2e-shots/A1-voucher-form.png" data-full="e2e-shots/A1-voucher-form.png" alt="A1 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>A2 借貸不平被擋（Dr 100／Cr 90） <span class="badge pass">PASS</span> <span class="note">1999ms</span></h3>
+<div class="case"><h3>A2 借貸不平被擋（Dr 100／Cr 90） <span class="badge pass">PASS</span> <span class="note">2045ms</span></h3>
 <div class="kv"><b>步驟：</b>填 Dr 100／Cr 90 → 檢查 postBtn 狀態</div>
 <div class="kv"><b>預期：</b>postBtn disabled；顯示差額 HK$10.00</div>
 <div class="kv"><b>實際：</b>{&quot;disabled&quot;:true,&quot;balance&quot;:&quot;差額 HK$ 10.00&quot;}</div>
 <div class="shots"><img src="e2e-shots/A2-unbalanced.png" data-full="e2e-shots/A2-unbalanced.png" alt="A2 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>A3 無效科目被擋 <span class="badge pass">PASS</span> <span class="note">1006ms</span></h3>
+<div class="case"><h3>A3 無效科目被擋 <span class="badge pass">PASS</span> <span class="note">1007ms</span></h3>
 <div class="kv"><b>步驟：</b>科目填「唔存在嘅科目」 → 檢查 postBtn</div>
 <div class="kv"><b>預期：</b>postBtn disabled；提示選有效科目</div>
 <div class="kv"><b>實際：</b>{&quot;disabled&quot;:true,&quot;balance&quot;:&quot;請從搜尋結果選擇有效會計科目&quot;}</div>
 </div>
-<div class="case"><h3>A4 日期唔喺財年內被擋 <span class="badge pass">PASS</span> <span class="note">1005ms</span></h3>
+<div class="case"><h3>A4 日期唔喺財年內被擋 <span class="badge pass">PASS</span> <span class="note">1007ms</span></h3>
 <div class="kv"><b>步驟：</b>日期改 2028-05-01 → 檢查 postBtn</div>
 <div class="kv"><b>預期：</b>postBtn disabled</div>
 <div class="kv"><b>實際：</b>{&quot;disabled&quot;:true}</div>
@@ -120,7 +120,7 @@ th{background:#f3f4f6;font-size:12px;color:var(--muted)}
 <div class="kv"><b>預期：</b>postBtn disabled</div>
 <div class="kv"><b>實際：</b>{&quot;disabled&quot;:true}</div>
 </div>
-<div class="case"><h3>B1 修改金額並重過賬 <span class="badge pass">PASS</span> <span class="note">4893ms</span></h3>
+<div class="case"><h3>B1 修改金額並重過賬 <span class="badge pass">PASS</span> <span class="note">4900ms</span></h3>
 <div class="kv"><b>步驟：</b>voucher 列表㩒「修改」 → 金額 22,000→20,000 → 儲存修改並重新過賬</div>
 <div class="kv"><b>預期：</b>同一張單更新（唔會多一張）；DB 只有 1 張 voucher</div>
 <div class="kv"><b>實際：</b>mode=儲存修改並重新過賬 count 1→1 debit=2000000</div>
@@ -131,33 +131,33 @@ th{background:#f3f4f6;font-size:12px;color:var(--muted)}
 <div class="kv"><b>預期：</b>Dr 總額＝Cr 總額</div>
 <div class="kv"><b>實際：</b>Dr=2000000 Cr=2000000</div>
 </div>
-<div class="case"><h3>B3 修改科目觸發報表重分類 <span class="badge pass">PASS</span> <span class="note">6328ms</span></h3>
+<div class="case"><h3>B3 修改科目觸發報表重分類 <span class="badge pass">PASS</span> <span class="note">6310ms</span></h3>
 <div class="kv"><b>步驟：</b>將 Cr 科目 Sales→Other Income → 重過賬 → 睇 P&amp;L</div>
 <div class="kv"><b>預期：</b>P&amp;L：Sales 消失，Other Income 20,000</div>
 <div class="kv"><b>實際：</b>OtherIncome+20000=true | P&amp;L頭200字：損益表 Profit &amp; Loss Account  Toys Gallery International Limited · HKD  下載 CSV（Excel 可開啟） 複製 CSV 內容 沿用現有 Excel 報表格式 報表月份 全年 2026年4月 2026年5月 2026年6月 2026年7月 2026年8月 2026年9月 2026年10月 2026年11月 2026年12月 2027</div>
 </div>
-<div class="case"><h3>B4 （觀察）桌面版 voucher 刪除功能 <span class="badge pass">PASS</span> <span class="note">15ms</span></h3>
+<div class="case"><h3>B4 （觀察）桌面版 voucher 刪除功能 <span class="badge pass">PASS</span> <span class="note">8ms</span></h3>
 <div class="kv"><b>步驟：</b>檢查 voucher 列表操作欄</div>
 <div class="kv"><b>預期：</b>記錄現狀（唔修）</div>
 <div class="kv"><b>實際：</b>操作欄只有「修改」=false → 列為 open question（可能係 audit trail 設計取捨，唔估）</div>
 </div>
-<div class="case"><h3>C1 兩張銷貨發票入賬（INV001／INV002） <span class="badge pass">PASS</span> <span class="note">10134ms</span></h3>
+<div class="case"><h3>C1 兩張銷貨發票入賬（INV001／INV002） <span class="badge pass">PASS</span> <span class="note">10136ms</span></h3>
 <div class="kv"><b>步驟：</b>銷貨單 2026-10-03：Dr AR 10,000／Cr Sales 10,000，AR 行明細 INV001 → 銷貨單 2026-10-05：Dr AR 5,000／Cr Sales 5,000，AR 行明細 INV002</div>
 <div class="kv"><b>預期：</b>兩張過賬成功</div>
 <div class="kv"><b>實際：</b>銷貨單 2/2</div>
 </div>
-<div class="case"><h3>C2 收款唔指定發票 → FIFO 對銷最舊 <span class="badge pass">PASS</span> <span class="note">6819ms</span></h3>
+<div class="case"><h3>C2 收款唔指定發票 → FIFO 對銷最舊 <span class="badge pass">PASS</span> <span class="note">6818ms</span></h3>
 <div class="kv"><b>步驟：</b>收款單 2026-10-06：Dr Bank 8,000／Cr AR of Toy Hunters 8,000，allocationInvoice 吉</div>
 <div class="kv"><b>預期：</b>INV001 對銷 8,000（最舊先）</div>
 <div class="kv"><b>實際：</b>allocations=[{&quot;invoice_no&quot;:&quot;INV001&quot;,&quot;amount_cents&quot;:800000}]</div>
 </div>
-<div class="case"><h3>C3 AR 賬齡餘額（INV001 餘 2,000／INV002 餘 5,000） <span class="badge pass">PASS</span> <span class="note">1812ms</span></h3>
+<div class="case"><h3>C3 AR 賬齡餘額（INV001 餘 2,000／INV002 餘 5,000） <span class="badge pass">PASS</span> <span class="note">1833ms</span></h3>
 <div class="kv"><b>步驟：</b>reports → ar → 睇 Toy Hunters 賬齡</div>
 <div class="kv"><b>預期：</b>INV001 餘 2,000；INV002 餘 5,000</div>
 <div class="kv"><b>實際：</b>INV001+2000=true INV002+5000=true</div>
 <div class="shots"><img src="e2e-shots/C3-ar-aging.png" data-full="e2e-shots/C3-ar-aging.png" alt="C3 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>C4 收款指定發票 INV002 <span class="badge pass">PASS</span> <span class="note">6827ms</span></h3>
+<div class="case"><h3>C4 收款指定發票 INV002 <span class="badge pass">PASS</span> <span class="note">6830ms</span></h3>
 <div class="kv"><b>步驟：</b>收款單 2026-10-07：Dr Bank 2,000／Cr AR 2,000，allocationInvoice=INV002</div>
 <div class="kv"><b>預期：</b>INV002 餘 3,000；INV001 餘額不變</div>
 <div class="kv"><b>實際：</b>allocations=[{&quot;invoice_no&quot;:&quot;INV002&quot;,&quot;amount_cents&quot;:200000}]</div>
@@ -167,13 +167,13 @@ th{background:#f3f4f6;font-size:12px;color:var(--muted)}
 <div class="kv"><b>預期：</b>2,000＋3,000＝5,000 一致</div>
 <div class="kv"><b>實際：</b>[&quot;INV001餘200000&quot;,&quot;INV002餘300000&quot;] 總=500000</div>
 </div>
-<div class="case"><h3>E1 試算表生成 <span class="badge pass">PASS</span> <span class="note">1306ms</span></h3>
+<div class="case"><h3>E1 試算表生成 <span class="badge pass">PASS</span> <span class="note">1322ms</span></h3>
 <div class="kv"><b>步驟：</b>reports → trial</div>
 <div class="kv"><b>預期：</b>Dr 總額＝Cr 總額</div>
 <div class="kv"><b>實際：</b>長度=449 Dr=4500000 Cr=4500000</div>
 <div class="shots"><img src="e2e-shots/E1-trial.png" data-full="e2e-shots/E1-trial.png" alt="E1 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>E2 損益表生成 <span class="badge pass">PASS</span> <span class="note">1291ms</span></h3>
+<div class="case"><h3>E2 損益表生成 <span class="badge pass">PASS</span> <span class="note">1295ms</span></h3>
 <div class="kv"><b>步驟：</b>reports → pl</div>
 <div class="kv"><b>預期：</b>Sales 15,000；Other Income 20,000</div>
 <div class="kv"><b>實際：</b>長度=659 關鍵字=true</div>
@@ -197,100 +197,100 @@ th{background:#f3f4f6;font-size:12px;color:var(--muted)}
 <div class="kv"><b>實際：</b>長度=459</div>
 <div class="shots"><img src="e2e-shots/E5-ap.png" data-full="e2e-shots/E5-ap.png" alt="E5 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>E6 採購報告生成 <span class="badge pass">PASS</span> <span class="note">1290ms</span></h3>
+<div class="case"><h3>E6 採購報告生成 <span class="badge pass">PASS</span> <span class="note">1295ms</span></h3>
 <div class="kv"><b>步驟：</b>reports → purchase</div>
 <div class="kv"><b>預期：</b>月份 tab 存在</div>
 <div class="kv"><b>實際：</b>長度=335</div>
 <div class="shots"><img src="e2e-shots/E6-purchase.png" data-full="e2e-shots/E6-purchase.png" alt="E6 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>E7 銷售報告生成 <span class="badge pass">PASS</span> <span class="note">1304ms</span></h3>
+<div class="case"><h3>E7 銷售報告生成 <span class="badge pass">PASS</span> <span class="note">1300ms</span></h3>
 <div class="kv"><b>步驟：</b>reports → sales</div>
 <div class="kv"><b>預期：</b>Sales 金額</div>
 <div class="kv"><b>實際：</b>長度=1025 關鍵字=true</div>
 <div class="shots"><img src="e2e-shots/E7-sales.png" data-full="e2e-shots/E7-sales.png" alt="E7 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>E8 Journal生成 <span class="badge pass">PASS</span> <span class="note">1299ms</span></h3>
+<div class="case"><h3>E8 Journal生成 <span class="badge pass">PASS</span> <span class="note">1333ms</span></h3>
 <div class="kv"><b>步驟：</b>reports → journal</div>
 <div class="kv"><b>預期：</b>逐張 voucher 逐行分錄</div>
 <div class="kv"><b>實際：</b>長度=959 關鍵字=true</div>
 <div class="shots"><img src="e2e-shots/E8-journal.png" data-full="e2e-shots/E8-journal.png" alt="E8 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>E9 Voucher Register生成 <span class="badge pass">PASS</span> <span class="note">1284ms</span></h3>
+<div class="case"><h3>E9 Voucher Register生成 <span class="badge pass">PASS</span> <span class="note">1300ms</span></h3>
 <div class="kv"><b>步驟：</b>reports → register</div>
 <div class="kv"><b>預期：</b>行數＝voucher 數</div>
 <div class="kv"><b>實際：</b>長度=612 vouchers=5</div>
 <div class="shots"><img src="e2e-shots/E9-register.png" data-full="e2e-shots/E9-register.png" alt="E9 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>E10 報表月份篩選（2026-10 單月） <span class="badge pass">PASS</span> <span class="note">11212ms</span></h3>
+<div class="case"><h3>E10 報表月份篩選（2026-10 單月） <span class="badge pass">PASS</span> <span class="note">11265ms</span></h3>
 <div class="kv"><b>步驟：</b>加一張 2026-09 採購單 → P&amp;L 切 2026-10 → 對比全年</div>
 <div class="kv"><b>預期：</b>單月 P&amp;L 無 9 月採購費用；全年有</div>
 <div class="kv"><b>實際：</b>10月無Purchase=true 全年有=true</div>
 </div>
-<div class="case"><h3>H1 有 Detail → Journal 逐行顯示 <span class="badge pass">PASS</span> <span class="note">7623ms</span></h3>
+<div class="case"><h3>H1 有 Detail → Journal 逐行顯示 <span class="badge pass">PASS</span> <span class="note">7628ms</span></h3>
 <div class="kv"><b>步驟：</b>入單：Dr Purchase 1,000（明細「文具費」）／Cr Bank 1,000（明細「銀行扣款」） → 睇 Journal</div>
 <div class="kv"><b>預期：</b>Journal 逐行顯示「文具費」同「銀行扣款」</div>
 <div class="kv"><b>實際：</b>文具費=true 銀行扣款=true</div>
 <div class="shots"><img src="e2e-shots/H1-journal-detail.png" data-full="e2e-shots/H1-journal-detail.png" alt="H1 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>H2 吉 Detail → Journal 用 voucher 摘要 <span class="badge pass">PASS</span> <span class="note">7537ms</span></h3>
+<div class="case"><h3>H2 吉 Detail → Journal 用 voucher 摘要 <span class="badge pass">PASS</span> <span class="note">7541ms</span></h3>
 <div class="kv"><b>步驟：</b>入單：Detail 吉晒，摘要 E2E-NODETAIL → 睇 Journal</div>
 <div class="kv"><b>預期：</b>Journal 用摘要顯示</div>
 <div class="kv"><b>實際：</b>摘要出現=true</div>
 </div>
-<div class="case"><h3>D1 新增財年 FY2027 <span class="badge pass">PASS</span> <span class="note">1794ms</span></h3>
+<div class="case"><h3>D1 新增財年 FY2027 <span class="badge pass">PASS</span> <span class="note">1816ms</span></h3>
 <div class="kv"><b>步驟：</b>財年管理 → 開始年份 2027 → 新增</div>
 <div class="kv"><b>預期：</b>FY2027 建立並自動切換</div>
 <div class="kv"><b>實際：</b>key=2027 fys=2027,2026 msg=✓ 已新增並切換至 FY2027/28。</div>
 <div class="shots"><img src="e2e-shots/D1-fiscal.png" data-full="e2e-shots/D1-fiscal.png" alt="D1 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>D2 新財年入賬唔影響舊年 P&amp;L <span class="badge pass">PASS</span> <span class="note">8367ms</span></h3>
+<div class="case"><h3>D2 新財年入賬唔影響舊年 P&amp;L <span class="badge pass">PASS</span> <span class="note">8345ms</span></h3>
 <div class="kv"><b>步驟：</b>FY2027 入銷貨單 30,000（2027-04-05） → 切返 FY2026 睇 P&amp;L</div>
 <div class="kv"><b>預期：</b>FY2026 P&amp;L Sales 維持 15,000（唔包 30,000）</div>
 <div class="kv"><b>實際：</b>FY2026 P&amp;L Sales=15000=true 無30000=true</div>
 </div>
-<div class="case"><h3>D3 FIFO 唔跨財年 <span class="badge pass">PASS</span> <span class="note">8439ms</span></h3>
+<div class="case"><h3>D3 FIFO 唔跨財年 <span class="badge pass">PASS</span> <span class="note">8460ms</span></h3>
 <div class="kv"><b>步驟：</b>切 FY2027，收 AR of Toy Hunters 5,000（2027-04-10） → 查 FY2026 INV001／INV002 對銷額</div>
 <div class="kv"><b>預期：</b>FY2026 兩張發票對銷額不變（8,000／2,000）</div>
 <div class="kv"><b>實際：</b>INV001=800000 INV002=200000</div>
 </div>
-<div class="case"><h3>D4 財年下拉隔離 voucher 列表 <span class="badge pass">PASS</span> <span class="note">2625ms</span></h3>
+<div class="case"><h3>D4 財年下拉隔離 voucher 列表 <span class="badge pass">PASS</span> <span class="note">2633ms</span></h3>
 <div class="kv"><b>步驟：</b>切 FY2027／FY2026，數 voucher 列表行數</div>
 <div class="kv"><b>預期：</b>兩個財年顯示各自嘅單</div>
 <div class="kv"><b>實際：</b>FY2027列表=2 FY2026列表=8 DB26=8</div>
 </div>
-<div class="case"><h3>F1 Voucher 範本有科目下拉選單 <span class="badge pass">PASS</span> <span class="note">1854ms</span></h3>
+<div class="case"><h3>F1 Voucher 範本有科目下拉選單 <span class="badge pass">PASS</span> <span class="note">2135ms</span></h3>
 <div class="kv"><b>步驟：</b>下載 voucher 範本 → 解 xlsx 查 dataValidation</div>
 <div class="kv"><b>預期：</b>13 欄；借／貸方欄有下拉</div>
 <div class="kv"><b>實際：</b>範本欄數=13 dataValidation=2 科目字串=false</div>
 </div>
-<div class="case"><h3>F2 資料夾匯入 Excel＋附件 <span class="badge pass">PASS</span> <span class="note">5150ms</span></h3>
+<div class="case"><h3>F2 資料夾匯入 Excel＋附件 <span class="badge pass">PASS</span> <span class="note">5200ms</span></h3>
 <div class="kv"><b>步驟：</b>資料夾放 Excel＋1 附件 → 從資料夾匯入 → 驗證入庫</div>
 <div class="kv"><b>預期：</b>匯入成功；附件入庫且 bytes 一致</div>
 <div class="kv"><b>實際：</b>vouchers 10→11 附件bytes一致=true</div>
 <div class="shots"><img src="e2e-shots/F2-import-preview.png" data-full="e2e-shots/F2-import-preview.png" alt="F2 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>F3 JSON 備份→新庫→還原端到端 <span class="badge pass">PASS</span> <span class="note">9348ms</span></h3>
+<div class="case"><h3>F3 JSON 備份→新庫→還原端到端 <span class="badge pass">PASS</span> <span class="note">9345ms</span></h3>
 <div class="kv"><b>步驟：</b>createBackupPayload 匯出 → 切空白新庫 → 設置頁 JSON 匯入 → 驗證數據返嚟</div>
 <div class="kv"><b>預期：</b>voucher／科目／附件數全部一致</div>
 <div class="kv"><b>實際：</b>voucher 11→11 科目 6→6 附件 1→1</div>
 </div>
-<div class="case"><h3>G1 工具欄修改公司名 <span class="badge pass">PASS</span> <span class="note">3274ms</span></h3>
+<div class="case"><h3>G1 工具欄修改公司名 <span class="badge pass">PASS</span> <span class="note">3292ms</span></h3>
 <div class="kv"><b>步驟：</b>㩒「修改」→ modal 輸入「E2E 測試公司」→ 確定</div>
 <div class="kv"><b>預期：</b>工具欄顯示「公司：E2E 測試公司」</div>
 <div class="kv"><b>實際：</b>工具欄顯示=E2E 測試公司</div>
 <div class="shots"><img src="e2e-shots/G1-company-modal.png" data-full="e2e-shots/G1-company-modal.png" alt="G1 截圖" loading="lazy"></div>
 </div>
-<div class="case"><h3>G2 吉公司名被拒 <span class="badge pass">PASS</span> <span class="note">1304ms</span></h3>
+<div class="case"><h3>G2 吉公司名被拒 <span class="badge pass">PASS</span> <span class="note">1305ms</span></h3>
 <div class="kv"><b>步驟：</b>開 modal → 清空 → 確定</div>
 <div class="kv"><b>預期：</b>顯示「請輸入公司名稱」；舊名保留</div>
 <div class="kv"><b>實際：</b>err=請輸入公司名稱 仍開住=true 名=E2E 測試公司</div>
 </div>
-<div class="case"><h3>G3 reload 後公司名仲喺度 <span class="badge pass">PASS</span> <span class="note">4726ms</span></h3>
+<div class="case"><h3>G3 reload 後公司名仲喺度 <span class="badge pass">PASS</span> <span class="note">4835ms</span></h3>
 <div class="kv"><b>步驟：</b>reload → 檢查工具欄＋app_state</div>
 <div class="kv"><b>預期：</b>公司名持久化</div>
 <div class="kv"><b>實際：</b>工具欄=E2E 測試公司 DB=&quot;E2E 測試公司&quot;</div>
 </div>
-<div class="case"><h3>G4 報表匯出標題用公司名 <span class="badge pass">PASS</span> <span class="note">6054ms</span></h3>
+<div class="case"><h3>G4 報表匯出標題用公司名 <span class="badge pass">PASS</span> <span class="note">6053ms</span></h3>
 <div class="kv"><b>步驟：</b>匯出 Excel 報表 zip → 解 zip 睇 xlsx 標題</div>
 <div class="kv"><b>預期：</b>標題含「E2E 測試公司」</div>
 <div class="kv"><b>實際：</b>標題=E2E 測試公司 — 試算表 Trial Balance</div>
